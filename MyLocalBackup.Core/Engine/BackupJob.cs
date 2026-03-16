@@ -394,6 +394,7 @@ namespace MyLocalBackup.Core.Engine
 
                 foreach (var partial in partialSnapshots)
                 {
+                    _cancellationToken.ThrowIfCancellationRequested();
                     try
                     {
                         Logger.Log($"Cleaning up partial snapshot from previous run: {Path.GetFileName(partial.Path)}");
@@ -410,11 +411,14 @@ namespace MyLocalBackup.Core.Engine
                             Logger.Log($"Warning: Directory still exists after cleanup attempt for snapshot {partial.Id}, keeping DB record for retry.");
                         }
                     }
+                    catch (OperationCanceledException) { throw; }
                     catch (Exception ex)
                     {
                         Logger.Log($"Warning: Could not clean up partial snapshot {partial.Id}: {ex}");
                     }
                 }
+
+                _cancellationToken.ThrowIfCancellationRequested();
 
                 var existingSnapshots = _centralDb.GetRestorePoints(centralConn)
                     .Where(x => x.TargetDestination == _destinationRoot && (x.Status == BackupStatus.Completed || x.Status == BackupStatus.CompletedWithErrors))
@@ -431,11 +435,13 @@ namespace MyLocalBackup.Core.Engine
                     Logger.Log($"Detected {staleSnapshots.Count} stale backup records (destination may have been formatted). Cleaning up...");
                     foreach (var stale in staleSnapshots)
                     {
+                        _cancellationToken.ThrowIfCancellationRequested();
                         try
                         {
                             Logger.Log($"Removing stale record: {stale.Path}");
                             _centralDb.DeleteRestorePoint(stale.Id, centralConn);
                         }
+                        catch (OperationCanceledException) { throw; }
                         catch (Exception ex)
                         {
                             Logger.Log($"Warning: Could not remove stale record {stale.Id}: {ex}");
@@ -448,6 +454,7 @@ namespace MyLocalBackup.Core.Engine
                     }
                 }
             }
+            catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
                 Logger.Log($"Warning: Error during stale record cleanup: {ex}");
