@@ -51,8 +51,12 @@ namespace MyLocalBackup.UI
                     FailedFiles.Clear();
                     if (files != null)
                     {
-                        foreach (var file in files)
-                            FailedFiles.Add(file);
+                        // Cap at 500 entries to prevent excessive memory usage
+                        var limit = Math.Min(files.Count, 500);
+                        for (int i = 0; i < limit; i++)
+                            FailedFiles.Add(files[i]);
+                        if (files.Count > 500)
+                            FailedFiles.Add($"... and {files.Count - 500} more (see log file for full list)");
                     }
                 }));
             }

@@ -15,6 +15,14 @@ namespace MyLocalBackup.UI.Views
         private readonly BackupScheduler _scheduler;
         private readonly ConfigManager _configManager;
         private System.Windows.Threading.DispatcherTimer? _countdownTimer;
+        private bool _isUnloaded;
+
+        // Cached theme brushes to avoid repeated TryFindResource lookups
+        private System.Windows.Media.Brush? _successBrush;
+        private System.Windows.Media.Brush? _warningBrush;
+        private System.Windows.Media.Brush? _errorBrush;
+        private System.Windows.Media.Brush? _textMutedBrush;
+        private System.Windows.Media.Brush? _primaryBrush;
 
         public DashboardView()
         {
@@ -28,8 +36,20 @@ namespace MyLocalBackup.UI.Views
             this.Unloaded += DashboardView_Unloaded;
         }
 
+        private void CacheBrushes()
+        {
+            _successBrush = TryFindResource("SuccessBrush") as System.Windows.Media.Brush ?? System.Windows.Media.Brushes.Green;
+            _warningBrush = TryFindResource("WarningBrush") as System.Windows.Media.Brush ?? System.Windows.Media.Brushes.Orange;
+            _errorBrush = TryFindResource("ErrorBrush") as System.Windows.Media.Brush ?? System.Windows.Media.Brushes.Red;
+            _textMutedBrush = TryFindResource("TextMutedBrush") as System.Windows.Media.Brush ?? System.Windows.Media.Brushes.Gray;
+            _primaryBrush = TryFindResource("PrimaryBrush") as System.Windows.Media.Brush ?? System.Windows.Media.Brushes.Teal;
+        }
+
         private void DashboardView_Loaded(object sender, RoutedEventArgs e)
         {
+            _isUnloaded = false;
+            CacheBrushes();
+
             // Unsubscribe first to prevent duplicate handlers if Loaded fires multiple times
             _scheduler.BackupStarted -= OnBackupStarted;
             _scheduler.BackupCompleted -= OnBackupCompletedHandler;
@@ -48,6 +68,8 @@ namespace MyLocalBackup.UI.Views
 
         private void DashboardView_Unloaded(object sender, RoutedEventArgs e)
         {
+            _isUnloaded = true;
+
             // Unsubscribe from events to prevent memory leak and duplicate handlers
             _scheduler.BackupStarted -= OnBackupStarted;
             _scheduler.BackupCompleted -= OnBackupCompletedHandler;
@@ -59,19 +81,19 @@ namespace MyLocalBackup.UI.Views
             {
                 _countdownTimer.Tick -= OnCountdownTimerTick;
             }
-            StopAndDisposeTimer(ref _countdownTimer);
+            StopAndClearTimer(ref _countdownTimer);
 
             if (_errorDismissTimer != null)
             {
                 _errorDismissTimer.Tick -= OnErrorDismissTimerTick;
             }
-            StopAndDisposeTimer(ref _errorDismissTimer);
+            StopAndClearTimer(ref _errorDismissTimer);
 
             if (_hideTimer != null)
             {
                 _hideTimer.Tick -= OnHideTimerTick;
             }
-            StopAndDisposeTimer(ref _hideTimer);
+            StopAndClearTimer(ref _hideTimer);
         }
 
         private void OnBackupCompletedHandler(object? sender, (bool success, string? error, System.Collections.Generic.IReadOnlyList<string>? failedFiles) data)
@@ -105,14 +127,12 @@ namespace MyLocalBackup.UI.Views
                     case Core.Models.BackupStatus.Completed:
                         TxtStatus.Text = "System Protected";
                         IconStatus.Text = "\uE73E"; // Checkmark
-                        IconStatus.Foreground = TryFindResource("SuccessBrush") as System.Windows.Media.Brush
-                            ?? System.Windows.Media.Brushes.Green;
+                        IconStatus.Foreground = _successBrush;
                         break;
                     case Core.Models.BackupStatus.CompletedWithErrors:
                         TxtStatus.Text = "Backup Completed with Errors";
                         IconStatus.Text = "\uE7BA"; // Warning
-                        IconStatus.Foreground = TryFindResource("WarningBrush") as System.Windows.Media.Brush
-                            ?? System.Windows.Media.Brushes.Orange;
+                        IconStatus.Foreground = _warningBrush;
                         // Show link to view logs for failed files
                         BtnViewLogs.Visibility = Visibility.Visible;
                         TxtLogSeparator.Visibility = Visibility.Visible;
@@ -120,8 +140,7 @@ namespace MyLocalBackup.UI.Views
                     case Core.Models.BackupStatus.Failed:
                         TxtStatus.Text = "Last Backup Failed";
                         IconStatus.Text = "\uE783"; // Error X
-                        IconStatus.Foreground = TryFindResource("ErrorBrush") as System.Windows.Media.Brush
-                            ?? System.Windows.Media.Brushes.Red;
+                        IconStatus.Foreground = _errorBrush;
                         // Show link to view logs
                         BtnViewLogs.Visibility = Visibility.Visible;
                         TxtLogSeparator.Visibility = Visibility.Visible;
@@ -129,8 +148,7 @@ namespace MyLocalBackup.UI.Views
                     case Core.Models.BackupStatus.Interrupted:
                         TxtStatus.Text = "Last Backup Was Cancelled";
                         IconStatus.Text = "\uE711"; // Cancel
-                        IconStatus.Foreground = TryFindResource("TextMutedBrush") as System.Windows.Media.Brush
-                            ?? System.Windows.Media.Brushes.Gray;
+                        IconStatus.Foreground = _textMutedBrush;
                         break;
                 }
             }
@@ -139,8 +157,7 @@ namespace MyLocalBackup.UI.Views
                 TxtLastBackup.Text = "No backups yet.";
                 TxtStatus.Text = "Ready to Backup";
                 IconStatus.Text = "\uE73E";
-                IconStatus.Foreground = TryFindResource("TextMutedBrush") as System.Windows.Media.Brush
-                    ?? System.Windows.Media.Brushes.Gray;
+                IconStatus.Foreground = _textMutedBrush;
             }
 
             // Sync with current running state in case view was recreated/loaded during backup
@@ -148,8 +165,7 @@ namespace MyLocalBackup.UI.Views
             {
                 // Override icon to show active/progress state instead of last backup's status
                 IconStatus.Text = "\uE895"; // Sync icon
-                IconStatus.Foreground = TryFindResource("PrimaryBrush") as System.Windows.Media.Brush
-                    ?? System.Windows.Media.Brushes.Teal;
+                IconStatus.Foreground = _primaryBrush;
 
                 ShowRunningActions();
                 ProgressSection.Visibility = Visibility.Visible;
@@ -223,8 +239,7 @@ namespace MyLocalBackup.UI.Views
 
                 // Reset status icon to a neutral sync/progress indicator
                 IconStatus.Text = "\uE895"; // Sync icon
-                IconStatus.Foreground = TryFindResource("PrimaryBrush") as System.Windows.Media.Brush
-                    ?? System.Windows.Media.Brushes.Teal;
+                IconStatus.Foreground = _primaryBrush;
 
                 ProgressSection.Visibility = Visibility.Visible;
                 ProgressSection.Opacity = 1; // Force opacity
@@ -292,14 +307,14 @@ namespace MyLocalBackup.UI.Views
                     TxtBackupError.Text = data.error;
 
                     // Auto-dismiss error banner after 5 seconds
-                    StopAndDisposeTimer(ref _errorDismissTimer);
+                    StopAndClearTimer(ref _errorDismissTimer);
                     _errorDismissTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
                     _errorDismissTimer.Tick += OnErrorDismissTimerTick;
                     _errorDismissTimer.Start();
                 }
 
                 // Hide progress with delay
-                StopAndDisposeTimer(ref _hideTimer);
+                StopAndClearTimer(ref _hideTimer);
                 _hideTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
                 _hideTimer.Tick += OnHideTimerTick;
                 _hideTimer.Start();
@@ -328,7 +343,7 @@ namespace MyLocalBackup.UI.Views
             }
         }
 
-        private void StopAndDisposeTimer(ref System.Windows.Threading.DispatcherTimer? timer)
+        private void StopAndClearTimer(ref System.Windows.Threading.DispatcherTimer? timer)
         {
             if (timer != null)
             {
@@ -339,14 +354,16 @@ namespace MyLocalBackup.UI.Views
 
         private void OnErrorDismissTimerTick(object? sender, EventArgs e)
         {
+            if (_isUnloaded) { StopAndClearTimer(ref _errorDismissTimer); return; }
             BackupErrorBanner.Visibility = Visibility.Collapsed;
-            StopAndDisposeTimer(ref _errorDismissTimer);
+            StopAndClearTimer(ref _errorDismissTimer);
         }
 
         private void OnHideTimerTick(object? sender, EventArgs e)
         {
+            if (_isUnloaded) { StopAndClearTimer(ref _hideTimer); return; }
             ProgressSection.Visibility = Visibility.Collapsed;
-            StopAndDisposeTimer(ref _hideTimer);
+            StopAndClearTimer(ref _hideTimer);
         }
 
         private void BtnPause_Click(object sender, RoutedEventArgs e)
@@ -368,6 +385,7 @@ namespace MyLocalBackup.UI.Views
         private void BtnCloseError_Click(object sender, RoutedEventArgs e)
         {
             BackupErrorBanner.Visibility = Visibility.Collapsed;
+            StopAndClearTimer(ref _errorDismissTimer);
         }
 
         private void BtnBackupNow_Click(object sender, RoutedEventArgs e)
@@ -381,12 +399,23 @@ namespace MyLocalBackup.UI.Views
             }
             else
             {
+                // Disable immediately to prevent rapid double-click launching duplicate backups
+                BtnBackupNow.IsEnabled = false;
                 Logger.Log("Manual backup requested from Dashboard.");
 
                 _ = _scheduler.RunBackup().ContinueWith(t =>
                 {
-                    if (t.IsFaulted && t.Exception != null)
-                        Logger.Log($"Backup failed unexpectedly: {t.Exception}");
+                    try
+                    {
+                        if (t.IsFaulted && t.Exception != null)
+                            Logger.Log($"Backup failed unexpectedly: {t.Exception}");
+                    }
+                    finally
+                    {
+                        // Re-enable on UI thread after backup completes (success or failure)
+                        // In finally so the button is always re-enabled even if logging throws
+                        Dispatcher.BeginInvoke(() => BtnBackupNow.IsEnabled = true);
+                    }
                 }, TaskScheduler.Default);
             }
         }
@@ -397,7 +426,7 @@ namespace MyLocalBackup.UI.Views
             using var dialog = new System.Windows.Forms.FolderBrowserDialog();
             if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             {
-                if (!_configManager.Config.SourceFolders.Contains(dialog.SelectedPath))
+                if (!_configManager.Config.SourceFolders.Any(f => string.Equals(f, dialog.SelectedPath, StringComparison.OrdinalIgnoreCase)))
                 {
                     _configManager.Config.SourceFolders.Add(dialog.SelectedPath);
                     _configManager.SaveConfig();
@@ -482,6 +511,7 @@ namespace MyLocalBackup.UI.Views
 
         private void OnCountdownTimerTick(object? sender, EventArgs e)
         {
+            if (_isUnloaded) { _countdownTimer?.Stop(); return; }
             UpdateCountdown();
         }
 

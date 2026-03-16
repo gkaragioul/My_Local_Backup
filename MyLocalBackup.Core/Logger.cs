@@ -19,9 +19,9 @@ namespace MyLocalBackup.Core
             // Buffered file logging - much faster than File.AppendAllText per call
             try
             {
-                EnsureWriter();
                 lock (_initLock)
                 {
+                    EnsureWriter();
                     _writer?.WriteLine(formattedMessage);
                 }
             }
@@ -33,7 +33,11 @@ namespace MyLocalBackup.Core
 
             // Trigger event for UI — capture handler to avoid race on concurrent unsubscribe
             var handler = OnLog;
-            handler?.Invoke(formattedMessage);
+            try { handler?.Invoke(formattedMessage); }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[WARNING] OnLog handler threw: {ex}");
+            }
         }
 
         /// <summary>
@@ -48,7 +52,10 @@ namespace MyLocalBackup.Core
                     _writer?.Flush();
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[WARNING] Logger flush failed: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -83,37 +90,46 @@ namespace MyLocalBackup.Core
 
         private static void EnsureWriter()
         {
+            // Caller already holds _initLock — no need for a second acquisition
             if (_writer != null || _isShutdown) return;
 
-            lock (_initLock)
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var folder = Path.Combine(appData, "MyLocalBackup");
+            Directory.CreateDirectory(folder);
+            var logPath = Path.Combine(folder, "logs.txt");
+
+            // Rotate log if it exceeds 5 MB
+            try
             {
-                if (_writer != null || _isShutdown) return;
-
-                var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                var folder = Path.Combine(appData, "MyLocalBackup");
-                Directory.CreateDirectory(folder);
-                var logPath = Path.Combine(folder, "logs.txt");
-
-                // Rotate log if it exceeds 5 MB
-                try
+                if (File.Exists(logPath) && new FileInfo(logPath).Length > 5 * 1024 * 1024)
                 {
-                    if (File.Exists(logPath) && new FileInfo(logPath).Length > 5 * 1024 * 1024)
-                    {
-                        var oldLog = logPath + ".old";
-                        if (File.Exists(oldLog)) File.Delete(oldLog);
-                        File.Move(logPath, oldLog);
-                    }
+                    var oldLog = logPath + ".old";
+                    // Use Move with overwrite (replaces locked-file delete+move race)
+                    File.Move(logPath, oldLog, overwrite: true);
                 }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"[WARNING] Log rotation failed: {ex.Message}");
-                }
+            }
+            catch (Exception ex)
+            {
+                // If rotation fails (e.g. .old file locked by another process),
+                // just continue — we'll append to the existing large file and retry next init
+                Console.Error.WriteLine($"[WARNING] Log rotation failed: {ex.Message}");
+            }
 
-                // AutoFlush=false for batched writes; we flush explicitly on backup completion and shutdown
-                _writer = new StreamWriter(logPath, append: true, encoding: System.Text.Encoding.UTF8, bufferSize: 8192)
+            // AutoFlush=false for batched writes; we flush explicitly on backup completion and shutdown
+            // Assign via temp variable so if anything throws between creation and assignment, we dispose it
+            StreamWriter? newWriter = null;
+            try
+            {
+                newWriter = new StreamWriter(logPath, append: true, encoding: System.Text.Encoding.UTF8, bufferSize: 8192)
                 {
                     AutoFlush = false
                 };
+                _writer = newWriter;
+                newWriter = null; // Ownership transferred to _writer — prevent disposal below
+            }
+            finally
+            {
+                newWriter?.Dispose();
             }
         }
     }

@@ -72,6 +72,7 @@
                     <TextBlock Text="General" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,10" Foreground="{DynamicResource TextBrush}"/>
                     <Border Style="{StaticResource GlassCardStyle}" Padding="20" Margin="0,0,0,25">
                         <StackPanel>
+                            <CheckBox x:Name="ChkLaunchStartup" Content="Launch at Windows startup" Margin="0,0,0,15" Checked="Setting_Changed" Unchecked="Setting_Changed" Foreground="{DynamicResource TextBrush}"/>
                             <CheckBox x:Name="ChkMinimizeTray" Content="Minimize to tray when closed" Margin="0,0,0,15" Checked="Setting_Changed" Unchecked="Setting_Changed" Foreground="{DynamicResource TextBrush}"/>
                             <CheckBox x:Name="ChkAutoDelete" Content="Automatically delete old backups if disk is full" Margin="0,0,0,15" Checked="Setting_Changed" Unchecked="Setting_Changed" Foreground="{DynamicResource TextBrush}"/>
                             <CheckBox x:Name="ChkShowNotifications" Content="Show notifications for every backup" Checked="Setting_Changed" Unchecked="Setting_Changed" Foreground="{DynamicResource TextBrush}"/>
@@ -119,7 +120,9 @@
             <!-- Activity Log Panel -->
             <Border x:Name="PanelActivityLog" Grid.Row="1" Style="{StaticResource GlassCardStyle}" Background="{DynamicResource CardBrush}">
                 <ListBox x:Name="LstLogs" BorderThickness="0" Background="Transparent" Padding="10"
-                         ItemsSource="{Binding Source={x:Static local:UILogger.Logs}}">
+                         ItemsSource="{Binding Source={x:Static local:UILogger.Logs}}"
+                         VirtualizingStackPanel.IsVirtualizing="True"
+                         VirtualizingStackPanel.VirtualizationMode="Recycling">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11" Foreground="{DynamicResource TextBrush}" Margin="0,2"/>
@@ -141,7 +144,10 @@
                     <!-- Failed Files List -->
                     <ListBox x:Name="LstFailedFiles" BorderThickness="0" Background="Transparent" Padding="10"
                              ItemsSource="{Binding Source={x:Static local:UILogger.FailedFiles}}"
-                             MouseDoubleClick="LstFailedFiles_MouseDoubleClick">
+                             MouseDoubleClick="LstFailedFiles_MouseDoubleClick"
+                             VirtualizingStackPanel.IsVirtualizing="True"
+                             VirtualizingStackPanel.VirtualizationMode="Recycling"
+                             ScrollViewer.CanContentScroll="True">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="8,6">

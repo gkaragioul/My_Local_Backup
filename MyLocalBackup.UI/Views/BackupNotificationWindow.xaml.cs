@@ -7,6 +7,7 @@ namespace MyLocalBackup.UI.Views
     public partial class BackupNotificationWindow : Window
     {
         private readonly DispatcherTimer _closeTimer;
+        private bool _isClosing;
 
         public BackupNotificationWindow()
         {
@@ -19,7 +20,12 @@ namespace MyLocalBackup.UI.Views
             _closeTimer.Tick += CloseTimer_Tick;
 
             Loaded += BackupNotificationWindow_Loaded;
-            Closed += (s, e) => _closeTimer.Stop();
+            Closed += (s, e) =>
+            {
+                _closeTimer.Stop();
+                _closeTimer.Tick -= CloseTimer_Tick;
+                Loaded -= BackupNotificationWindow_Loaded;
+            };
         }
 
         private void BackupNotificationWindow_Loaded(object sender, RoutedEventArgs e)
@@ -40,13 +46,26 @@ namespace MyLocalBackup.UI.Views
             _closeTimer.Stop();
 
             // Start fade out animation — use clone to avoid handler accumulation on shared resource
-            var fadeOut = ((Storyboard)FindResource("FadeOut")).Clone();
-            fadeOut.Completed += FadeOut_Completed;
-            fadeOut.Begin(this);
+            if (TryFindResource("FadeOut") is Storyboard storyboard)
+            {
+                var fadeOut = storyboard.Clone();
+                fadeOut.Completed += FadeOut_Completed;
+                fadeOut.Begin(this);
+            }
+            else
+            {
+                // Resource missing — close immediately instead of crashing
+                FadeOut_Completed(null, EventArgs.Empty);
+            }
         }
 
         private void FadeOut_Completed(object? sender, EventArgs e)
         {
+            if (_isClosing) return;
+            _isClosing = true;
+            // Unsubscribe to prevent handler accumulation on the cloned storyboard
+            if (sender is Storyboard sb)
+                sb.Completed -= FadeOut_Completed;
             this.Close();
         }
 

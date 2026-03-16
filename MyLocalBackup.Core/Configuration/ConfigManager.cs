@@ -53,7 +53,7 @@ namespace MyLocalBackup.Core.Configuration
                     File.Copy(_configPath, bakPath, overwrite: true);
                     Logger.Log($"Corrupted config saved to: {bakPath}");
                 }
-                catch { }
+                catch (Exception backupEx) { Logger.Log($"WARNING: Could not save backup of corrupted config: {backupEx.Message}"); }
                 ConfigWasCorrupted = true;
                 return new BackupConfig();
             }

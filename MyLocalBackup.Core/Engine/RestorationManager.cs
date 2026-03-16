@@ -2,7 +2,7 @@ namespace MyLocalBackup.Core.Engine
 {
     public static class RestorationManager
     {
-        public static void RestoreFile(string snapshotFilePath, string targetPath, bool overwrite = false)
+        public static void RestoreFile(string snapshotFilePath, string targetPath, bool overwrite = false, string? boundaryRoot = null)
         {
             if (!File.Exists(snapshotFilePath))
                 throw new FileNotFoundException("Snapshot file not found.", snapshotFilePath);
@@ -12,6 +12,16 @@ namespace MyLocalBackup.Core.Engine
             var targetDir = Path.GetDirectoryName(safeTargetPath);
             if (string.IsNullOrEmpty(targetDir))
                 throw new ArgumentException("Invalid target path", nameof(targetPath));
+
+            // If a boundary root is provided, ensure the target stays within it
+            if (boundaryRoot != null)
+            {
+                var fullBoundary = Path.GetFullPath(boundaryRoot);
+                if (!fullBoundary.EndsWith(Path.DirectorySeparatorChar))
+                    fullBoundary += Path.DirectorySeparatorChar;
+                if (!safeTargetPath.StartsWith(fullBoundary, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException($"Path traversal detected: target escapes boundary root");
+            }
 
             Directory.CreateDirectory(targetDir);
 
@@ -69,7 +79,8 @@ namespace MyLocalBackup.Core.Engine
             catch
             {
                 // Clean up staging directory on failure to prevent temp space leaks
-                try { if (Directory.Exists(stagingRoot)) Directory.Delete(stagingRoot, true); } catch { }
+                try { if (Directory.Exists(stagingRoot)) Directory.Delete(stagingRoot, true); }
+                catch (Exception cleanupEx) { Logger.Log($"Warning: Could not clean up staging directory: {cleanupEx.Message}"); }
                 throw;
             }
 
@@ -85,7 +96,8 @@ namespace MyLocalBackup.Core.Engine
             }
             finally
             {
-                try { Directory.Delete(stagingPath, true); } catch { }
+                try { Directory.Delete(stagingPath, true); }
+                catch (Exception cleanupEx) { Logger.Log($"Warning: Could not clean up staging directory: {cleanupEx.Message}"); }
             }
         }
     }

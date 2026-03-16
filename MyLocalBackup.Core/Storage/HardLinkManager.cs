@@ -20,11 +20,15 @@ namespace MyLocalBackup.Core.Storage
             {
                 int error = Marshal.GetLastWin32Error();
 
-                // Only log once per drive to avoid log spam
+                // Only log once per drive/error combo to avoid log spam
                 var driveRoot = Path.GetPathRoot(newFilePath) ?? "unknown";
                 if (error == 1 && _warnedDrives.TryAdd(driveRoot, true)) // ERROR_INVALID_FUNCTION - file system doesn't support hard links
                 {
                     Logger.Log($"Hard links not supported on drive {driveRoot} (likely exFAT/FAT32). Deduplication disabled, using full copies.");
+                }
+                else if (error == 17 && _warnedDrives.TryAdd($"{driveRoot}_cross", true)) // ERROR_NOT_SAME_DEVICE - cross-volume
+                {
+                    Logger.Log($"Hard links cannot span volumes (source and destination on different drives). Using full copies.");
                 }
 
                 return false;

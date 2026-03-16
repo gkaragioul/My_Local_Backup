@@ -1,35 +1,56 @@
 #!/usr/bin/env pwsh
 # Release Build Script for MyLocalBackup
-# Usage: ./release-build.ps1 -Version "2.0.0"
+# Usage: ./release-build.ps1 -Version "X.Y.Z"
 
 param(
     [Parameter(Mandatory=$true)]
     [string]$Version
 )
 
+# Validate version format (X.Y.Z)
+if ($Version -notmatch '^\d+\.\d+\.\d+$') {
+    throw "Invalid version format '$Version'. Expected format: X.Y.Z (e.g., 0.7.1)"
+}
+
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 $publishDir = "$root\Staging\Publish"
 $msiDir = "$root\Staging\MyLocalBackup_Setup"
+$stagingBase = "$root\Staging\MLB_Build"
 
 Write-Host "=== MyLocalBackup Release Build v$Version ===" -ForegroundColor Cyan
 
 # Step 1: Publish
 Write-Host "`n[1/4] Publishing..." -ForegroundColor Yellow
 if (Test-Path $publishDir) { Remove-Item $publishDir -Recurse -Force }
-dotnet publish "$root/MyLocalBackup.UI/MyLocalBackup.UI.csproj" -c Release -r win-x64 --self-contained -o $publishDir | Out-Null
+dotnet publish "$root/MyLocalBackup.UI/MyLocalBackup.UI.csproj" -c Release -r win-x64 --self-contained -p:PublishReadyToRun=true -o $publishDir | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Publish failed" }
+
+# Verify publish output contains expected files
+if (-not (Get-ChildItem $publishDir -Filter "*.exe" | Select-Object -First 1)) {
+    throw "Publish succeeded but no .exe found in output directory"
+}
+
+# Strip PDB files — not needed in release MSI (matches PackagePortable.ps1 behavior)
+Get-ChildItem -Path $publishDir -Filter "*.pdb" -Recurse | Remove-Item
+Write-Host "  PDB files stripped from publish output" -ForegroundColor Gray
 
 # Step 2: Stage and build MSI
 Write-Host "[2/4] Building MSI..." -ForegroundColor Yellow
-if (Test-Path "C:\MLB_Staging") { Remove-Item "C:\MLB_Staging\*" -Recurse -Force }
-New-Item -ItemType Directory -Path "C:\MLB_Staging" -Force | Out-Null
-Copy-Item "$publishDir\*" "C:\MLB_Staging\" -Recurse -Force
+
+# Clean up old MSI/WixPdb/cab artifacts from previous builds
+Get-ChildItem $msiDir -Include "*.msi","*.wixpdb","*.cab" -File | ForEach-Object {
+    Remove-Item $_.FullName -Force
+    Write-Host "  Cleaned old artifact: $($_.Name)" -ForegroundColor Gray
+}
+if (Test-Path $stagingBase) { Remove-Item $stagingBase -Recurse -Force }
+New-Item -ItemType Directory -Path $stagingBase -Force | Out-Null
+Copy-Item "$publishDir\*" "$stagingBase\" -Recurse -Force
 
 # Always regenerate Files.wxs from actual publish output so it never goes stale
 Write-Host "  Regenerating Files.wxs from publish output..." -ForegroundColor Gray
 $filesWxs = "$msiDir/Files.wxs"
-$stagingBase = "C:\MLB_Staging"
+## $stagingBase is set above near the top of the script
 
 function Get-SafeId($s) { return ($s -replace '[^a-zA-Z0-9]', '_') }
 
@@ -42,6 +63,7 @@ Get-ChildItem "$stagingBase" -File | ForEach-Object {
 
 # Build one ComponentGroup per locale subdirectory
 $localeFragments = [System.Collections.Generic.List[string]]::new()
+$localeGroupIds = [System.Collections.Generic.List[string]]::new()
 Get-ChildItem "$stagingBase" -Directory | ForEach-Object {
     $dirName = $_.Name
     $dirId = "dir_$(Get-SafeId $dirName)"
@@ -49,6 +71,7 @@ Get-ChildItem "$stagingBase" -Directory | ForEach-Object {
     $files = Get-ChildItem $_.FullName -File
     if ($files.Count -eq 0) { return }
 
+    $localeGroupIds.Add($groupId)
     $comps = $files | ForEach-Object {
         $id = "fc_$(Get-SafeId $dirName)_$(Get-SafeId $_.Name)"
         "    <Component Id='$id' Guid='*' Directory='$dirId'><File Source='$stagingBase\$dirName\$($_.Name)' /></Component>"
@@ -83,10 +106,33 @@ $($localeFragments -join "`n")
 Set-Content $filesWxs -Value $wxsContent -Encoding UTF8
 Write-Host "  Files.wxs regenerated ($($rootComponents.Count) root + $($localeFragments.Count) locale groups)" -ForegroundColor Gray
 
+# Patch Package.wxs Feature block to match the locale groups we actually generated
+$packageWxs = "$msiDir/Package.wxs"
+$pkgContent = Get-Content $packageWxs -Raw
+$localeRefs = ($localeGroupIds | ForEach-Object { "      <ComponentGroupRef Id=`"$_`" />" }) -join "`n"
+$featureBlock = @"
+    <Feature Id="MainFeature" Title="MyLocalBackup" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+$localeRefs
+      <ComponentGroupRef Id="ApplicationShortcuts" />
+    </Feature>
+"@
+$pkgContent = $pkgContent -replace '(?s)<Feature Id="MainFeature".*?</Feature>', $featureBlock
+Set-Content $packageWxs -Value $pkgContent -Encoding UTF8
+Write-Host "  Package.wxs Feature block updated with $($localeGroupIds.Count) locale refs" -ForegroundColor Gray
+
 Push-Location $msiDir
 wix build Package.wxs Files.wxs -d "Version=$Version" -o MyLocalBackupSetup.msi
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw "MSI build failed" }
 Pop-Location
+
+# Verify MSI was created
+if (-not (Test-Path "$msiDir\MyLocalBackupSetup.msi")) {
+    throw "MSI build reported success but MyLocalBackupSetup.msi was not found"
+}
+
+# Clean up staging directory
+if (Test-Path $stagingBase) { Remove-Item $stagingBase -Recurse -Force }
 
 # Step 3: Compute MSI hash
 Write-Host "[3/4] Computing MSI hash..." -ForegroundColor Yellow

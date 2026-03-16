@@ -8,6 +8,10 @@ namespace MyLocalBackup.Core.Engine
         private readonly DatabaseManager _db;
         private readonly BackupConfig _config;
 
+        // Track snapshots that failed to revert from Deleting status so callers can see them
+        private readonly List<int> _stuckSnapshotIds = new();
+        public IReadOnlyList<int> StuckSnapshotIds => _stuckSnapshotIds;
+
         public RetentionManager(DatabaseManager db, BackupConfig config)
         {
             _db = db;
@@ -20,7 +24,7 @@ namespace MyLocalBackup.Core.Engine
             {
                 // Use central database filtered by destination
                 var allSnapshots = _db.GetRestorePoints()
-                    .Where(rp => rp.TargetDestination == destinationRoot && rp.Status == BackupStatus.Completed && !rp.IsPinned)
+                    .Where(rp => rp.TargetDestination == destinationRoot && (rp.Status == BackupStatus.Completed || rp.Status == BackupStatus.CompletedWithErrors) && !rp.IsPinned)
                     .OrderBy(rp => rp.Timestamp)
                     .ToList();
 
@@ -32,13 +36,20 @@ namespace MyLocalBackup.Core.Engine
                 // 2. Snapshot Thinning (Thinning oldest first)
                 var snapshotsToKeep = GetSnapshotsToKeep(allSnapshots);
                 var snapshotsToDelete = allSnapshots
-                    .Where(s => !snapshotsToKeep.Contains(s.Id) && !s.IsPinned)
+                    .Where(s => !snapshotsToKeep.Contains(s.Id))
                     .ToList();
 
                 foreach (var snapshot in snapshotsToDelete)
                 {
-                    Logger.Log($"Retention: Removing old snapshot {Path.GetFileName(snapshot.Path)}...");
-                    DeleteSnapshot(snapshot);
+                    try
+                    {
+                        Logger.Log($"Retention: Removing old snapshot {Path.GetFileName(snapshot.Path)}...");
+                        DeleteSnapshot(snapshot);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Log($"Warning: Retention could not remove snapshot {Path.GetFileName(snapshot.Path)}: {ex.Message}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -48,6 +59,11 @@ namespace MyLocalBackup.Core.Engine
             }
         }
 
+        /// <summary>
+        /// Deletes oldest snapshots when disk space is low.
+        /// NOTE: Intentionally mutates the <paramref name="snapshots"/> list (removes deleted entries)
+        /// so the subsequent thinning pass in Prune() won't try to double-delete them.
+        /// </summary>
         private void CheckStoragePressure(string destinationRoot, List<RestorePoint> snapshots)
         {
             try
@@ -68,19 +84,33 @@ namespace MyLocalBackup.Core.Engine
                 const int maxDeletionsPerRun = 10; // Prevent infinite loop
                 int deletionCount = 0;
 
-                while (drive.AvailableFreeSpace < lowSpaceThreshold && snapshots.Count > 5 && deletionCount < maxDeletionsPerRun)
+                int candidateIndex = 0;
+                while (drive.AvailableFreeSpace < lowSpaceThreshold && candidateIndex < snapshots.Count && snapshots.Count > 5 && deletionCount < maxDeletionsPerRun)
                 {
-                    var oldest = snapshots[0];
-                    snapshots.RemoveAt(0); // Remove from candidate list first to guarantee loop termination
+                    var oldest = snapshots[candidateIndex];
 
                     // Re-check pin status in case user pinned it since we read the list
-                    if (oldest.IsPinned) continue;
+                    if (oldest.IsPinned)
+                    {
+                        candidateIndex++;
+                        continue;
+                    }
 
                     if (TryDeleteSnapshot(oldest))
                     {
+                        snapshots.RemoveAt(candidateIndex); // Only remove on successful deletion
                         deletionCount++;
                         // Refresh drive info to get updated free space
-                        drive = new DriveInfo(pathRoot);
+                        try { drive = new DriveInfo(pathRoot); }
+                        catch (Exception ex)
+                        {
+                            Logger.Log($"Warning: Drive no longer accessible during retention cleanup: {ex.Message}");
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        candidateIndex++; // Skip failed candidates, try the next one
                     }
                 }
 
@@ -166,15 +196,38 @@ namespace MyLocalBackup.Core.Engine
                 else
                 {
                     // Revert so the next retention run can retry rather than orphaning the record
-                    _db.UpdateRestorePointStatus(snapshot.Id, BackupStatus.Completed);
+                    RevertSnapshotStatus(snapshot.Id);
                     Logger.Log($"Warning: Directory still exists after deletion attempt, reverting status for retry: {snapshot.Path}");
                 }
             }
             catch (Exception ex)
             {
                 // Revert so this snapshot isn't permanently stuck as Deleting
-                try { _db.UpdateRestorePointStatus(snapshot.Id, BackupStatus.Completed); } catch { }
+                if (!RevertSnapshotStatus(snapshot.Id))
+                {
+                    // Revert failed — snapshot is stuck as Deleting until next app startup self-check
+                    _stuckSnapshotIds.Add(snapshot.Id);
+                    Logger.Log($"ERROR: Snapshot {snapshot.Id} is stuck in Deleting state (revert also failed). Will be cleaned up on next startup.");
+                }
                 Logger.Log($"Failed to delete snapshot {snapshot.Path}: {ex}");
+            }
+        }
+
+        /// <summary>
+        /// Reverts a snapshot from Deleting back to Completed so the next retention run can retry.
+        /// Returns true if revert succeeded, false if it failed.
+        /// </summary>
+        private bool RevertSnapshotStatus(int snapshotId)
+        {
+            try
+            {
+                _db.UpdateRestorePointStatus(snapshotId, BackupStatus.Completed);
+                return true;
+            }
+            catch (Exception revertEx)
+            {
+                Logger.Log($"Warning: Could not revert snapshot {snapshotId} status from Deleting: {revertEx.Message}");
+                return false;
             }
         }
 

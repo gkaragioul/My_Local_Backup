@@ -42,8 +42,9 @@ namespace MyLocalBackup.Core.Data
                 return driveInfo.DriveType == DriveType.Removable || 
                        driveInfo.DriveType == DriveType.Network;
             }
-            catch
+            catch (Exception ex)
             {
+                Logger.Log($"Warning: Could not determine drive type for {path}: {ex.Message}");
                 return false; // Assume local drive if we can't determine
             }
         }
@@ -60,9 +61,9 @@ namespace MyLocalBackup.Core.Data
                 if (File.Exists(shmPath)) File.Delete(shmPath);
                 if (File.Exists(journalPath)) File.Delete(journalPath);
             }
-            catch 
+            catch (Exception ex)
             {
-                // Ignore cleanup failures - best effort
+                Logger.Log($"Warning: WAL cleanup failed for {dbPath}: {ex.Message}");
             }
         }
 
@@ -171,8 +172,26 @@ namespace MyLocalBackup.Core.Data
             // so no index creation is needed here.
         }
 
+        // Only these identifiers are valid for schema migration — prevents SQL injection in DDL statements
+        private static readonly HashSet<string> AllowedIdentifiers = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "RestorePoints", "FileEntries",
+            "Attributes", "IsPinned", "TargetDestination",
+            "Id", "Timestamp", "Path", "Status", "RestorePointId",
+            "RelativePath", "IsDirectory", "Size", "LastWriteTime"
+        };
+
+        private static void ValidateIdentifier(string name)
+        {
+            if (!AllowedIdentifiers.Contains(name))
+                throw new ArgumentException($"Unknown schema identifier: {name}");
+        }
+
         private void TryAddColumn(SqliteConnection connection, string table, string column, string definition)
         {
+            ValidateIdentifier(table);
+            ValidateIdentifier(column);
+
             try
             {
                 if (!ColumnExists(connection, table, column))
@@ -190,6 +209,9 @@ namespace MyLocalBackup.Core.Data
 
         private bool ColumnExists(SqliteConnection connection, string tableName, string columnName)
         {
+            ValidateIdentifier(tableName);
+            ValidateIdentifier(columnName);
+
             using var cmd = connection.CreateCommand();
             cmd.CommandText = $"PRAGMA table_info({tableName});";
             using var reader = cmd.ExecuteReader();
@@ -262,20 +284,12 @@ namespace MyLocalBackup.Core.Data
             try
             {
                 using var command = connection.CreateCommand();
-                command.CommandText = "SELECT * FROM RestorePoints ORDER BY Timestamp DESC";
+                command.CommandText = "SELECT Id, Timestamp, Path, Status, IsPinned, TargetDestination FROM RestorePoints ORDER BY Timestamp DESC";
 
                 using var reader = command.ExecuteReader();
                 while (reader.Read())
                 {
-                    results.Add(new RestorePoint
-                    {
-                        Id = reader.GetInt32(0),
-                        Timestamp = DateTime.Parse(reader.GetString(1), null, System.Globalization.DateTimeStyles.RoundtripKind),
-                        Path = reader.GetString(2),
-                        Status = (BackupStatus)reader.GetInt32(3),
-                        IsPinned = !reader.IsDBNull(4) && reader.GetInt32(4) == 1,
-                        TargetDestination = reader.IsDBNull(5) ? "" : reader.GetString(5)
-                    });
+                    results.Add(ReadRestorePoint(reader));
                 }
             }
             finally
@@ -291,27 +305,39 @@ namespace MyLocalBackup.Core.Data
             try
             {
                 using var command = connection.CreateCommand();
-                command.CommandText = $"SELECT * FROM RestorePoints WHERE Status = {(int)BackupStatus.Completed} ORDER BY Timestamp DESC LIMIT 1";
+                command.CommandText = "SELECT Id, Timestamp, Path, Status, IsPinned, TargetDestination FROM RestorePoints WHERE Status IN ($s1, $s2) ORDER BY Timestamp DESC LIMIT 1";
+                command.Parameters.AddWithValue("$s1", (int)BackupStatus.Completed);
+                command.Parameters.AddWithValue("$s2", (int)BackupStatus.CompletedWithErrors);
 
                 using var reader = command.ExecuteReader();
                 if (reader.Read())
                 {
-                    return new RestorePoint
-                    {
-                        Id = reader.GetInt32(0),
-                        Timestamp = DateTime.Parse(reader.GetString(1), null, System.Globalization.DateTimeStyles.RoundtripKind),
-                        Path = reader.GetString(2),
-                        Status = (BackupStatus)reader.GetInt32(3),
-                        IsPinned = !reader.IsDBNull(4) && reader.GetInt32(4) == 1,
-                        TargetDestination = reader.IsDBNull(5) ? "" : reader.GetString(5)
-                    };
+                    return ReadRestorePoint(reader);
                 }
             }
             catch (Exception ex)
             {
                 Logger.Log($"Error querying last successful restore point: {ex}");
+                throw;
             }
             return null;
+        }
+
+        /// <summary>
+        /// Maps a reader row (from explicit SELECT Id, Timestamp, Path, Status, IsPinned, TargetDestination)
+        /// to a RestorePoint. Column order must match the SELECT.
+        /// </summary>
+        private static RestorePoint ReadRestorePoint(SqliteDataReader reader)
+        {
+            return new RestorePoint
+            {
+                Id = reader.GetInt32(0),
+                Timestamp = DateTime.Parse(reader.GetString(1), null, System.Globalization.DateTimeStyles.RoundtripKind),
+                Path = reader.GetString(2),
+                Status = (BackupStatus)reader.GetInt32(3),
+                IsPinned = !reader.IsDBNull(4) && reader.GetInt32(4) == 1,
+                TargetDestination = reader.IsDBNull(5) ? "" : reader.GetString(5)
+            };
         }
 
         /// <summary>
@@ -357,9 +383,14 @@ namespace MyLocalBackup.Core.Data
 
                     transaction.Commit();
                 }
-                catch
+                catch (Exception ex)
                 {
-                    transaction.Rollback();
+                    try { transaction.Rollback(); }
+                    catch (Exception rollbackEx)
+                    {
+                        Logger.Log($"ERROR: Transaction rollback failed after batch insert error: {rollbackEx.Message}");
+                        throw new AggregateException("Batch insert failed and rollback also failed", ex, rollbackEx);
+                    }
                     throw;
                 }
             }
@@ -390,9 +421,11 @@ namespace MyLocalBackup.Core.Data
                     SELECT f.Size, f.LastWriteTime, f.RestorePointId, f.RelativePath
                     FROM FileEntries f
                     JOIN RestorePoints r ON f.RestorePointId = r.Id
-                    WHERE r.Status = {(int)BackupStatus.Completed} AND r.TargetDestination = $dest AND f.IsDirectory = 0
+                    WHERE r.Status IN ($s1, $s2) AND r.TargetDestination = $dest AND f.IsDirectory = 0
                     ORDER BY r.Timestamp DESC
                     LIMIT $maxLimit";
+                command.Parameters.AddWithValue("$s1", (int)BackupStatus.Completed);
+                command.Parameters.AddWithValue("$s2", (int)BackupStatus.CompletedWithErrors);
                 command.Parameters.AddWithValue("$maxLimit", MaxDedupEntries);
                 command.Parameters.AddWithValue("$dest", destinationRoot);
 
@@ -423,23 +456,31 @@ namespace MyLocalBackup.Core.Data
             var results = new List<FileEntry>();
             using var connection = OpenAdHocConnection();
 
-            using var command = connection.CreateCommand();
-            command.CommandText = "SELECT Id, RestorePointId, RelativePath, IsDirectory, Size, LastWriteTime, Attributes FROM FileEntries WHERE RestorePointId = $rpId";
-            command.Parameters.AddWithValue("$rpId", restorePointId);
-
-            using var reader = command.ExecuteReader();
-            while (reader.Read())
+            try
             {
-                results.Add(new FileEntry
+                using var command = connection.CreateCommand();
+                command.CommandText = "SELECT Id, RestorePointId, RelativePath, IsDirectory, Size, LastWriteTime, Attributes FROM FileEntries WHERE RestorePointId = $rpId";
+                command.Parameters.AddWithValue("$rpId", restorePointId);
+
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
                 {
-                    Id = reader.GetInt32(0),
-                    RestorePointId = reader.GetInt32(1),
-                    RelativePath = reader.GetString(2),
-                    IsDirectory = reader.GetInt32(3) == 1,
-                    Size = reader.GetInt64(4),
-                    LastWriteTime = DateTime.Parse(reader.GetString(5), null, System.Globalization.DateTimeStyles.RoundtripKind),
-                    Attributes = unchecked((uint)reader.GetInt64(6))
-                });
+                    results.Add(new FileEntry
+                    {
+                        Id = reader.GetInt32(0),
+                        RestorePointId = reader.GetInt32(1),
+                        RelativePath = reader.GetString(2),
+                        IsDirectory = reader.GetInt32(3) == 1,
+                        Size = reader.GetInt64(4),
+                        LastWriteTime = DateTime.Parse(reader.GetString(5), null, System.Globalization.DateTimeStyles.RoundtripKind),
+                        Attributes = (uint)(reader.GetInt64(6) & 0xFFFFFFFF)
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Error reading file entries for restore point {restorePointId}: {ex}");
+                throw;
             }
             return results;
         }

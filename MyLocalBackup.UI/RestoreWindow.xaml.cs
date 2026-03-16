@@ -53,6 +53,7 @@ namespace MyLocalBackup.UI
             }
             catch (Exception ex)
             {
+                Core.Logger.Log($"Error loading files for snapshot {rpId}: {ex.Message}");
                 System.Windows.MessageBox.Show($"Error loading files: {ex.Message}");
             }
         }
@@ -88,7 +89,19 @@ namespace MyLocalBackup.UI
             {
                 try
                 {
-                    var sourcePath = Path.Combine(_selectedSnapshot.Path, entry.RelativePath);
+                    // Validate RelativePath is actually relative to prevent path injection
+                    if (Path.IsPathRooted(entry.RelativePath) || entry.RelativePath.Contains(".."))
+                    {
+                        System.Windows.MessageBox.Show("Invalid file path detected. This file cannot be restored.", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
+                    var sourcePath = Path.GetFullPath(Path.Combine(_selectedSnapshot.Path, entry.RelativePath));
+                    // Ensure resolved path is still within the snapshot directory (catches Unicode normalization tricks)
+                    if (!sourcePath.StartsWith(Path.GetFullPath(_selectedSnapshot.Path) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                    {
+                        System.Windows.MessageBox.Show("Invalid file path detected. This file cannot be restored.", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
                     var destPath = Path.Combine(dialog.SelectedPath, Path.GetFileName(entry.RelativePath));
 
                     if (entry.IsDirectory)

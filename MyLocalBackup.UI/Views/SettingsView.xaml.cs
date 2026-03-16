@@ -58,6 +58,7 @@ namespace MyLocalBackup.UI.Views
             }
             UpdateDailyTimeLabel();
 
+            ChkLaunchStartup.IsChecked = _configManager.Config.LaunchAtStartup;
             ChkMinimizeTray.IsChecked = _configManager.Config.MinimizeToTray;
             ChkAutoDelete.IsChecked = _configManager.Config.AutoDeleteOldBackups;
             ChkShowNotifications.IsChecked = _configManager.Config.ShowBackupNotifications;
@@ -69,6 +70,7 @@ namespace MyLocalBackup.UI.Views
             _failedFilesHandler = (s, e) => UpdateFailedFilesBadge();
             Loaded += (s, e) => {
                 UpdateFailedFilesBadge(); // Catch any changes that happened while hidden
+                UILogger.FailedFiles.CollectionChanged -= _failedFilesHandler; // Prevent duplicate on re-Loaded
                 UILogger.FailedFiles.CollectionChanged += _failedFilesHandler;
             };
             Unloaded += (s, e) => UILogger.FailedFiles.CollectionChanged -= _failedFilesHandler;
@@ -212,11 +214,41 @@ namespace MyLocalBackup.UI.Views
         {
             if (_isInitializing) return;
 
+            _configManager.Config.LaunchAtStartup = ChkLaunchStartup.IsChecked ?? false;
             _configManager.Config.MinimizeToTray = ChkMinimizeTray.IsChecked ?? false;
             _configManager.Config.AutoDeleteOldBackups = ChkAutoDelete.IsChecked ?? false;
             _configManager.Config.ShowBackupNotifications = ChkShowNotifications.IsChecked ?? false;
 
             _configManager.SaveConfig();
+
+            // Update Windows startup registry
+            SetLaunchAtStartup(_configManager.Config.LaunchAtStartup);
+        }
+
+        private static void SetLaunchAtStartup(bool enable)
+        {
+            try
+            {
+                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Run", writable: true);
+                if (key == null) return;
+
+                if (enable)
+                {
+                    var exePath = System.IO.Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "MyLocalBackup", "MyLocalBackup.UI.exe");
+                    key.SetValue("MyLocalBackup", $"\"{exePath}\"");
+                }
+                else
+                {
+                    key.DeleteValue("MyLocalBackup", throwOnMissingValue: false);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Failed to update startup registry: {ex.Message}");
+            }
         }
 
         private void SldInterval_ValueChanged(object sender, System.Windows.RoutedPropertyChangedEventArgs<double> e)

@@ -25,6 +25,8 @@ namespace MyLocalBackup.Core.Engine
         // Shared state for parallel operations - List+lock is more memory-efficient than ConcurrentBag
         private List<FileEntry> _pendingEntries = new(BatchInsertSize + 1);
         private readonly object _flushLock = new();
+        private int _flushFailureCount; // Tracks consecutive flush failures to prevent unbounded re-queuing
+        private const int MaxFlushRetries = 3; // Drop entries after this many consecutive failures
         private Dictionary<(long size, string lwt), (int rpId, string relativePath)>? _dedupIndex;
         private Dictionary<int, RestorePoint>? _restorePointCache;
 
@@ -73,14 +75,17 @@ namespace MyLocalBackup.Core.Engine
                     // Drive may not be ready yet - wait and retry
                     Logger.Log($"Directory not accessible (attempt {attempt}/{maxRetries}): {path}. Retrying...");
                     onProgress?.Invoke(0, $"Waiting for drive... (attempt {attempt}/{maxRetries})");
-                    Thread.Sleep(1000 * attempt); // Exponential backoff: 1s, 2s, 3s
+                    // Cancellation-aware delay instead of Thread.Sleep
+                    _cancellationToken.WaitHandle.WaitOne(1000 * attempt);
+                    _cancellationToken.ThrowIfCancellationRequested();
                 }
                 catch (IOException ex) when (attempt < maxRetries && IsDriveNotReady(ex))
                 {
                     // Drive not ready
                     Logger.Log($"Drive not ready (attempt {attempt}/{maxRetries}): {path}. Retrying...");
                     onProgress?.Invoke(0, $"Waiting for drive... (attempt {attempt}/{maxRetries})");
-                    Thread.Sleep(1000 * attempt);
+                    _cancellationToken.WaitHandle.WaitOne(1000 * attempt);
+                    _cancellationToken.ThrowIfCancellationRequested();
                 }
                 // On the final attempt, the catch guards above are false so the exception propagates to the caller.
             }
@@ -243,7 +248,7 @@ namespace MyLocalBackup.Core.Engine
 
                 // Identification of previous snapshot for dedup (from central DB, filtered by destination)
                 var latestCompleteRp = _centralDb.GetRestorePoints(masterCentralConn)
-                    .Where(x => x.Id != rpCentral.Id && x.Status == BackupStatus.Completed && x.TargetDestination == _destinationRoot)
+                    .Where(x => x.Id != rpCentral.Id && (x.Status == BackupStatus.Completed || x.Status == BackupStatus.CompletedWithErrors) && x.TargetDestination == _destinationRoot)
                     .OrderByDescending(x => x.Timestamp)
                     .FirstOrDefault();
 
@@ -253,7 +258,7 @@ namespace MyLocalBackup.Core.Engine
                 _dedupIndex = _centralDb.GetDedupIndex(_destinationRoot, masterCentralConn);
                 _cancellationToken.ThrowIfCancellationRequested();
                 _restorePointCache = _centralDb.GetRestorePoints(masterCentralConn)
-                    .Where(r => r.TargetDestination == _destinationRoot && r.Status == BackupStatus.Completed)
+                    .Where(r => r.TargetDestination == _destinationRoot && (r.Status == BackupStatus.Completed || r.Status == BackupStatus.CompletedWithErrors))
                     .ToDictionary(r => r.Id);
                 Logger.Log($"Dedup index loaded: {_dedupIndex.Count} entries from {_restorePointCache.Count} snapshots");
 
@@ -394,7 +399,16 @@ namespace MyLocalBackup.Core.Engine
                         Logger.Log($"Cleaning up partial snapshot from previous run: {Path.GetFileName(partial.Path)}");
                         if (Directory.Exists(partial.Path))
                             Directory.Delete(partial.Path, true);
-                        _centralDb.DeleteRestorePoint(partial.Id, centralConn);
+
+                        // Only remove DB record after confirming filesystem is clean
+                        if (!Directory.Exists(partial.Path))
+                        {
+                            _centralDb.DeleteRestorePoint(partial.Id, centralConn);
+                        }
+                        else
+                        {
+                            Logger.Log($"Warning: Directory still exists after cleanup attempt for snapshot {partial.Id}, keeping DB record for retry.");
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -403,7 +417,7 @@ namespace MyLocalBackup.Core.Engine
                 }
 
                 var existingSnapshots = _centralDb.GetRestorePoints(centralConn)
-                    .Where(x => x.TargetDestination == _destinationRoot && x.Status == BackupStatus.Completed)
+                    .Where(x => x.TargetDestination == _destinationRoot && (x.Status == BackupStatus.Completed || x.Status == BackupStatus.CompletedWithErrors))
                     .ToList();
 
                 if (existingSnapshots.Count == 0) return;
@@ -502,9 +516,9 @@ namespace MyLocalBackup.Core.Engine
                     count += CountFilesRecursive(subDir);
                 }
             }
-            catch (UnauthorizedAccessException) { /* Skip inaccessible directories */ }
-            catch (DirectoryNotFoundException) { /* Skip deleted directories */ }
-            catch (IOException) { /* Skip I/O errors */ }
+            catch (UnauthorizedAccessException ex) { Logger.Log($"Warning: Skipping inaccessible directory {directory}: {ex.Message}"); }
+            catch (DirectoryNotFoundException) { /* Directory deleted between enumeration and access */ }
+            catch (IOException ex) { Logger.Log($"Warning: I/O error scanning {directory}: {ex.Message}"); }
 
             return count;
         }
@@ -525,13 +539,29 @@ namespace MyLocalBackup.Core.Engine
                 try
                 {
                     _centralDb.AddFileEntriesBatch(entries, conn);
+                    _flushFailureCount = 0; // Reset on success
                     Logger.Log($"Flushed {entries.Count} file entries to database");
                 }
                 catch (Exception ex)
                 {
-                    // Re-queue entries so they aren't silently lost
-                    Logger.Log($"Warning: Batch insert failed ({entries.Count} entries), re-queuing: {ex}");
-                    _pendingEntries.InsertRange(0, entries);
+                    _flushFailureCount++;
+                    if (_flushFailureCount <= MaxFlushRetries)
+                    {
+                        // Re-queue entries so they aren't silently lost
+                        Logger.Log($"Warning: Batch insert failed ({entries.Count} entries), re-queuing (attempt {_flushFailureCount}/{MaxFlushRetries}): {ex}");
+                        _pendingEntries.InsertRange(0, entries);
+                    }
+                    else
+                    {
+                        // Drop entries to prevent unbounded memory growth — log which files were lost
+                        _hasErrors = true;
+                        Logger.Log($"ERROR: Batch insert failed {_flushFailureCount} times, dropping {entries.Count} entries to prevent memory exhaustion: {ex}");
+                        int logLimit = Math.Min(entries.Count, 20);
+                        for (int i = 0; i < logLimit; i++)
+                            Logger.Log($"  DROPPED: {entries[i].RelativePath}");
+                        if (entries.Count > 20)
+                            Logger.Log($"  ... and {entries.Count - 20} more entries dropped.");
+                    }
                 }
             }
         }
@@ -651,9 +681,14 @@ namespace MyLocalBackup.Core.Engine
                                 Logger.Log($"Warning: Failed to preserve symlink {fileName}: {ex}");
                             }
                         }
+                        else
+                        {
+                            Logger.Log($"Warning: Could not resolve symlink target for file: {sourceFilePath}");
+                        }
 
-                        // Couldn't preserve symlink - skip rather than fail on broken target
+                        // Couldn't preserve symlink - record as failed so user sees it
                         Logger.Log($"Skipping unpreservable symlink: {sourceFilePath}");
+                        lock (_failedFilesLock) { _failedFiles.Add(sourceFilePath); }
                         Interlocked.Increment(ref _processedFileCount);
                         continue;
                     }
@@ -692,16 +727,15 @@ namespace MyLocalBackup.Core.Engine
                             if (_restorePointCache.TryGetValue(match.Value.rpId, out var matchRp))
                             {
                                 var matchPhysicalPath = Path.Combine(matchRp.Path, match.Value.relativePath);
-                                if (File.Exists(matchPhysicalPath))
+                                try
                                 {
-                                    try
-                                    {
+                                    if (File.Exists(matchPhysicalPath))
                                         linked = HardLinkManager.Create(targetFilePath, matchPhysicalPath);
-                                    }
-                                    catch (Exception hlEx)
-                                    {
-                                        Logger.Log($"Warning: Hard link failed for {fileName}: {hlEx}");
-                                    }
+                                }
+                                catch (Exception hlEx)
+                                {
+                                    // TOCTOU: source may have been deleted between Exists check and Create
+                                    Logger.Log($"Warning: Hard link failed for {fileName}: {hlEx.Message}");
                                 }
                             }
                         }
@@ -717,7 +751,8 @@ namespace MyLocalBackup.Core.Engine
                         catch
                         {
                             // Clean up partial/truncated file to prevent dedup index poisoning
-                            try { if (File.Exists(targetFilePath)) File.Delete(targetFilePath); } catch { }
+                            try { if (File.Exists(targetFilePath)) File.Delete(targetFilePath); }
+                            catch (Exception cleanupEx) { Logger.Log($"Warning: Could not clean up partial file {targetFilePath}: {cleanupEx.Message}"); }
                             throw;
                         }
                         // Set timestamps separately - failure here shouldn't count as a copy error
@@ -831,9 +866,14 @@ namespace MyLocalBackup.Core.Engine
                             Logger.Log($"Warning: Failed to preserve directory symlink {dirName}: {ex}");
                         }
                     }
+                    else
+                    {
+                        Logger.Log($"Warning: Could not resolve symlink target for directory: {subDir}");
+                    }
 
-                    // Couldn't preserve directory symlink - skip to avoid infinite loops
+                    // Couldn't preserve directory symlink - record as failed so user sees it
                     Logger.Log($"Skipping unpreservable directory symlink: {subDir}");
+                    lock (_failedFilesLock) { _failedFiles.Add(subDir); }
                     continue;
                 }
 

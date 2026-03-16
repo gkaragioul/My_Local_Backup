@@ -123,6 +123,10 @@ namespace MyLocalBackup.UI
                 Logger.Log($"Connecting to database: {dbPath}");
                 DatabaseManager = new DatabaseManager(dbPath);
 
+                // 2.5. Self-check: clean up orphaned restore points from crashed backups
+                Logger.Log("Performing startup self-check...");
+                PerformSelfCheck(DatabaseManager);
+
                 // 3. Initialize Scheduler
                 Logger.Log("Initializing scheduler...");
                 Scheduler = new BackupScheduler(ConfigManager.Config, DatabaseManager);
@@ -159,6 +163,46 @@ namespace MyLocalBackup.UI
             }
         }
 
+        private static void PerformSelfCheck(Core.Data.DatabaseManager db)
+        {
+            try
+            {
+                var rps = db.GetRestorePoints();
+
+                // Safety: if ALL restore points are orphaned, possible DB corruption — skip
+                var totalCount = rps.Count;
+                var orphanedCount = rps.Count(rp => rp.Status == Core.Models.BackupStatus.Deleting || rp.Status == Core.Models.BackupStatus.InProgress);
+                if (totalCount > 2 && orphanedCount == totalCount)
+                {
+                    Logger.Log("WARNING: Self-check skipped — all restore points have Deleting/InProgress status. Possible corruption.");
+                    return;
+                }
+
+                foreach (var rp in rps)
+                {
+                    if (rp.Status == Core.Models.BackupStatus.Deleting || rp.Status == Core.Models.BackupStatus.InProgress)
+                    {
+                        Logger.Log($"Found orphaned restore point {rp.Id} ({rp.Status}). Cleaning up...");
+                        try
+                        {
+                            if (System.IO.Directory.Exists(rp.Path))
+                                System.IO.Directory.Delete(rp.Path, true);
+                            db.DeleteRestorePoint(rp.Id);
+                            Logger.Log($"Cleaned up orphaned restore point {rp.Id}.");
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Log($"Failed to clean up orphaned restore point {rp.Id}: {ex.Message}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Self-check failed: {ex.Message}");
+            }
+        }
+
         private void LogCriticalError(Exception ex, string context)
         {
             var crashFolder = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), "MyLocalBackup");
@@ -167,7 +211,7 @@ namespace MyLocalBackup.UI
             var crashFile = System.IO.Path.Combine(crashFolder, $"crash_{timestamp}.txt");
 
             try { System.IO.File.WriteAllText(crashFile, $"CRITICAL ERROR [{context}]:\n{ex}"); } catch { }
-            try { Logger.Log($"CRITICAL ERROR [{context}]: {ex}"); } catch { }
+            try { Logger.Log($"CRITICAL ERROR [{context}]: {ex}"); Logger.Flush(); } catch { }
         }
 
         protected override void OnExit(ExitEventArgs e)
@@ -176,12 +220,12 @@ namespace MyLocalBackup.UI
             if (Scheduler?.IsRunning == true)
             {
                 Scheduler.CancelBackup();
-                // Poll until the backup thread acknowledges cancellation (up to 2 seconds)
+                // Wait for backup thread to acknowledge cancellation (up to 2 seconds)
+                // SpinWait avoids blocking the UI thread with Thread.Sleep
                 var sw = System.Diagnostics.Stopwatch.StartNew();
-                while (Scheduler.IsRunning && sw.ElapsedMilliseconds < 2000)
-                    Thread.Sleep(50);
+                SpinWait.SpinUntil(() => !Scheduler.IsRunning || sw.ElapsedMilliseconds >= 2000);
             }
-            Scheduler?.Stop();
+            Scheduler?.Dispose();
 
             // Flush and close logger
             Logger.Shutdown();

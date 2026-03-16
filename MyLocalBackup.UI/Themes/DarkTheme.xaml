@@ -27,6 +27,9 @@
     <SolidColorBrush x:Key="ErrorBgBrush" Color="{StaticResource ErrorBgColor}"/>
     <SolidColorBrush x:Key="ErrorBorderBrush" Color="{StaticResource ErrorBorderColor}"/>
 
+    <!-- Status icon background -->
+    <SolidColorBrush x:Key="IconBgBrush" Color="#1510B981" />
+
     <!-- Badge colors (schedule badge on dashboard) -->
     <SolidColorBrush x:Key="BadgeBgBrush" Color="#1A2DD4BF"/>
     <SolidColorBrush x:Key="BadgeTextBrush" Color="#2DD4BF"/>

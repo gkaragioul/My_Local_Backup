@@ -8,12 +8,15 @@ namespace MyLocalBackup.UI
     {
         private readonly Dictionary<string, UIElement> _views = new();
         private bool _allowShutdown;
+        private bool _isUpdating;
         private readonly MyLocalBackup.Core.Services.UpdateService _updateService;
         private System.Windows.Threading.DispatcherTimer? _updateTimer;
+        private System.Threading.CancellationTokenSource _updateCts = new();
 
         // Store event handler references for proper unsubscription
         private readonly EventHandler<string> _backupStartedHandler;
         private readonly EventHandler<(bool success, string? error, System.Collections.Generic.IReadOnlyList<string>? failedFiles)> _backupCompletedHandler;
+        private readonly EventHandler? _updateTimerTickHandler;
 
         public MainWindow()
         {
@@ -55,21 +58,35 @@ namespace MyLocalBackup.UI
 
             // Version Display
             var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
-            TxtVersion.Text = $"Version {version?.ToString(3) ?? "1.0.0"}";
+            TxtVersion.Text = $"Version {version?.ToString(3) ?? "0.7.0"}";
 
             // Run update checks on UI thread to avoid cross-thread UI crashes.
             _updateTimer = new System.Windows.Threading.DispatcherTimer
             {
                 Interval = TimeSpan.FromHours(12)
             };
-            _updateTimer.Tick += async (s, e) =>
+            _updateTimerTickHandler = async (s, e) =>
             {
-                await CheckForUpdates(isAuto: true);
+                try
+                {
+                    _updateTimer?.Stop(); // Prevent overlapping ticks while async check runs
+                    await CheckForUpdates(isAuto: true, _updateCts.Token);
+                }
+                catch (OperationCanceledException) { } // Expected on shutdown
+                catch (Exception ex)
+                {
+                    Core.Logger.Log($"Auto update check failed: {ex}");
+                }
+                finally
+                {
+                    _updateTimer?.Start();
+                }
             };
+            _updateTimer.Tick += _updateTimerTickHandler;
             _updateTimer.Start();
-            
+
             // Tray Double Click
-            MyNotifyIcon.TrayMouseDoubleClick += (s, e) => BtnShow_Click(this, new RoutedEventArgs());
+            MyNotifyIcon.TrayMouseDoubleClick += TrayIcon_DoubleClick;
 
             // Check if a previous update failed (MSI didn't install, or app crashed after update)
             if (_updateService.CheckPendingUpdateFailed(out var expectedVer))
@@ -83,7 +100,7 @@ namespace MyLocalBackup.UI
                     if (result == MessageBoxResult.Yes)
                     {
                         try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(prevInfo.Value.DownloadUrl) { UseShellExecute = true }); }
-                        catch { }
+                        catch (Exception ex) { Core.Logger.Log($"Failed to open previous version download URL: {ex.Message}"); }
                     }
                 }
                 else
@@ -94,15 +111,20 @@ namespace MyLocalBackup.UI
                 }
             }
 
-            // Initial checks
-            _ = CheckForUpdates(isAuto: true);
+            // Initial update check — fire-and-forget with error handling
+            _ = CheckForUpdates(isAuto: true, _updateCts.Token).ContinueWith(t =>
+            {
+                if (t.IsFaulted && t.Exception != null)
+                    Core.Logger.Log($"Initial update check failed: {t.Exception.InnerException?.Message ?? t.Exception.Message}");
+            }, System.Threading.Tasks.TaskScheduler.Default);
         }
 
-        private async System.Threading.Tasks.Task CheckForUpdates(bool isAuto)
+        private async System.Threading.Tasks.Task CheckForUpdates(bool isAuto, System.Threading.CancellationToken ct = default)
         {
             try
             {
                 var updateInfo = await _updateService.CheckForUpdatesAsync(isAuto);
+                ct.ThrowIfCancellationRequested();
                 if (updateInfo != null)
                 {
                     if (System.Windows.MessageBox.Show($"A new version ({updateInfo.Version}) is available.\n\nRelease Notes:\n{updateInfo.ReleaseNotes}\n\nDo you want to update now?",
@@ -132,6 +154,7 @@ namespace MyLocalBackup.UI
         {
             var prevTitle = this.Title;
             var prevVersionText = TxtVersion.Text;
+            _isUpdating = true;
             try
             {
                 // Save current version info for rollback before starting the update
@@ -168,18 +191,37 @@ namespace MyLocalBackup.UI
                 System.Windows.MessageBox.Show($"Update failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 this.Title = prevTitle;
                 TxtVersion.Text = prevVersionText;
+                _isUpdating = false;
+                // Restart auto-check timer so future updates are still detected
+                _updateTimer?.Start();
             }
         }
 
         private async void BtnCheckUpdates_Click(object sender, RoutedEventArgs e)
         {
             BtnCheckUpdates.IsEnabled = false;
-            await CheckForUpdates(isAuto: false);
-            BtnCheckUpdates.IsEnabled = true;
+            try
+            {
+                await CheckForUpdates(isAuto: false);
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"Update check failed: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                BtnCheckUpdates.IsEnabled = true;
+            }
         }
 
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
+            if (_isUpdating)
+            {
+                // Don't allow close/hide during update — user must wait for download to finish
+                e.Cancel = true;
+                return;
+            }
             if (!_allowShutdown && App.ConfigManager?.Config != null && App.ConfigManager.Config.MinimizeToTray)
             {
                 // Minimize to tray instead of closing
@@ -196,6 +238,9 @@ namespace MyLocalBackup.UI
 
         private void CleanupResources()
         {
+            // Cancel any in-flight update checks before tearing down
+            try { _updateCts.Cancel(); } catch { }
+
             // Unsubscribe from scheduler events to prevent memory leaks
             if (App.Scheduler != null)
             {
@@ -203,12 +248,15 @@ namespace MyLocalBackup.UI
                 App.Scheduler.BackupCompleted -= _backupCompletedHandler;
             }
 
-            // Dispose timer to prevent it from firing after shutdown
+            // Unsubscribe tick handler and dispose timer to prevent firing after shutdown
+            if (_updateTimer != null && _updateTimerTickHandler != null)
+                _updateTimer.Tick -= _updateTimerTickHandler;
             _updateTimer?.Stop();
             _updateTimer = null;
 
-            // Dispose update service (HttpClient)
-            _updateService.Dispose();
+            // Dispose update service (HttpClient) and cancellation token
+            _updateService?.Dispose();
+            _updateCts.Dispose();
         }
 
         public void NavigateTo(string viewName)
@@ -230,9 +278,8 @@ namespace MyLocalBackup.UI
 
         private void Nav_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is System.Windows.Controls.RadioButton rb)
+            if (sender is System.Windows.Controls.RadioButton rb && rb.Content?.ToString() is string viewName)
             {
-                var viewName = rb.Content.ToString()!;
                 if (_views.TryGetValue(viewName, out var view))
                 {
                     ContentArea.Content = view;
@@ -243,6 +290,8 @@ namespace MyLocalBackup.UI
         private void BtnMinimize_Click(object sender, RoutedEventArgs e) => this.WindowState = WindowState.Minimized;
         private void BtnClose_Click(object sender, RoutedEventArgs e)
         {
+            if (_isUpdating) return; // Don't allow close during update download
+
             if (App.ConfigManager?.Config != null && App.ConfigManager.Config.MinimizeToTray)
             {
                 this.ShowInTaskbar = false;
@@ -290,6 +339,12 @@ namespace MyLocalBackup.UI
             });
         }
 
+        private void TrayIcon_DoubleClick(object sender, RoutedEventArgs e)
+        {
+            try { BtnShow_Click(this, new RoutedEventArgs()); }
+            catch (Exception ex) { Core.Logger.Log($"Error restoring window from tray: {ex}"); }
+        }
+
         private void BtnShow_Click(object sender, RoutedEventArgs e)
         {
             this.ShowInTaskbar = true;
@@ -300,15 +355,17 @@ namespace MyLocalBackup.UI
         private void BtnExit_Click(object sender, RoutedEventArgs e) { _allowShutdown = true; CleanupResources(); System.Windows.Application.Current.Shutdown(); }
         private void BtnBackupNowTray_Click(object sender, RoutedEventArgs e)
         {
+            if (App.Scheduler == null) return;
             _ = App.Scheduler.RunBackup().ContinueWith(t =>
             {
                 if (t.IsFaulted && t.Exception != null)
                     Core.Logger.Log($"Backup failed unexpectedly: {t.Exception}");
             }, System.Threading.Tasks.TaskScheduler.Default);
         }
-        private void BtnCancelTray_Click(object sender, RoutedEventArgs e) { App.Scheduler.CancelBackup(); }
+        private void BtnCancelTray_Click(object sender, RoutedEventArgs e) { App.Scheduler?.CancelBackup(); }
         private void TrayPause_Click(object sender, RoutedEventArgs e)
         {
+            if (App.Scheduler == null) return;
             if (App.Scheduler.IsPaused) App.Scheduler.Resume();
             else App.Scheduler.Pause();
             TrayPauseItem.IsChecked = App.Scheduler.IsPaused;
@@ -328,7 +385,7 @@ namespace MyLocalBackup.UI
                 {
                     App.ConfigManager.Config.Schedule = Core.Models.ScheduleType.Manual;
                     App.ConfigManager.SaveConfig();
-                    App.Scheduler.Stop();
+                    App.Scheduler?.Stop();
                     
                     Logger.Log("Automatic backups disabled by user (from tray).");
                 }

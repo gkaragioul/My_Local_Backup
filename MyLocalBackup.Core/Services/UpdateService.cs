@@ -29,20 +29,41 @@ namespace MyLocalBackup.Core.Services
         private static readonly string PreviousVersionFile = Path.Combine(AppDataDir, "previous_version.txt");
 
         private readonly HttpClient _httpClient;
+        private readonly CancellationTokenSource _cts = new();
         private bool _disposed;
 
         public UpdateService()
         {
-            _httpClient = new HttpClient();
-            var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "2.0.0";
+            _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.7.0";
             _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MyLocalBackup", version));
+            CleanupOrphanedTempScripts();
+        }
+
+        /// <summary>
+        /// Removes orphaned mlb_relaunch_*.ps1 temp scripts from previous failed update attempts.
+        /// </summary>
+        private static void CleanupOrphanedTempScripts()
+        {
+            try
+            {
+                var tempDir = Path.GetTempPath();
+                foreach (var file in Directory.EnumerateFiles(tempDir, "mlb_relaunch_*.ps1"))
+                {
+                    try { File.Delete(file); }
+                    catch { /* File may be in use by a running update — skip */ }
+                }
+            }
+            catch { /* Non-critical cleanup — ignore errors */ }
         }
 
         public void Dispose()
         {
             if (!_disposed)
             {
+                _cts.Cancel();
                 _httpClient.Dispose();
+                _cts.Dispose();
                 _disposed = true;
             }
         }
@@ -59,7 +80,8 @@ namespace MyLocalBackup.Core.Services
 
         public async Task<UpdateInfo?> CheckForUpdatesAsync(bool isAuto = false)
         {
-            using var response = await _httpClient.GetAsync(GitHubApiUrl);
+            if (_disposed) return null;
+            using var response = await _httpClient.GetAsync(GitHubApiUrl, _cts.Token);
             if (!response.IsSuccessStatusCode)
                 return null;
 
@@ -124,7 +146,7 @@ namespace MyLocalBackup.Core.Services
         public void DismissVersion(string version)
         {
             try { File.WriteAllText(DismissedVersionFile, version); }
-            catch { /* best effort */ }
+            catch (Exception ex) { Logger.Log($"Warning: Could not save dismissed version: {ex.Message}"); }
         }
 
         private bool IsDismissed(string tagName)
@@ -134,7 +156,7 @@ namespace MyLocalBackup.Core.Services
                 if (!File.Exists(DismissedVersionFile)) return false;
                 return File.ReadAllText(DismissedVersionFile).Trim() == tagName;
             }
-            catch { return false; }
+            catch (Exception ex) { Logger.Log($"Warning: Could not read dismissed version file: {ex.Message}"); return false; }
         }
 
         /// <summary>
@@ -144,7 +166,7 @@ namespace MyLocalBackup.Core.Services
         public void WritePendingUpdateMarker(string expectedVersion)
         {
             try { File.WriteAllText(PendingUpdateFile, expectedVersion); }
-            catch { /* best effort */ }
+            catch (Exception ex) { Logger.Log($"Warning: Could not write pending update marker: {ex.Message}"); }
         }
 
         /// <summary>
@@ -174,7 +196,7 @@ namespace MyLocalBackup.Core.Services
                     return IsNewerVersion(expectedVer, currentVersion);
                 }
             }
-            catch { /* best effort */ }
+            catch (Exception ex) { Logger.Log($"Warning: Could not check pending update status: {ex.Message}"); }
             return false;
         }
 
@@ -190,7 +212,7 @@ namespace MyLocalBackup.Core.Services
                 var downloadUrl = $"https://github.com/{RepoOwner}/{RepoName}/releases/download/v{currentVer}/MyLocalBackupSetup.msi";
                 File.WriteAllText(PreviousVersionFile, $"{currentVer}|{downloadUrl}");
             }
-            catch { }
+            catch (Exception ex) { Logger.Log($"Warning: Could not save previous version info: {ex.Message}"); }
         }
 
         /// <summary>
@@ -207,15 +229,22 @@ namespace MyLocalBackup.Core.Services
                 if (parts.Length == 2 && !string.IsNullOrEmpty(parts[0]) && !string.IsNullOrEmpty(parts[1]))
                     return (parts[0], parts[1]);
             }
-            catch { }
+            catch (Exception ex) { Logger.Log($"Warning: Could not read previous version info: {ex.Message}"); }
             return null;
         }
 
         public async Task DownloadInstallerAsync(string downloadUrl, string destinationPath, IProgress<double> progress, string? expectedSha256 = null)
         {
+            if (_disposed) throw new ObjectDisposedException(nameof(UpdateService));
+
+            // Reject before downloading if no hash is available
+            if (string.IsNullOrEmpty(expectedSha256))
+                throw new InvalidOperationException(
+                    "Update rejected: no SHA256 hash found in release notes.\n\nThis may indicate a tampered update source.");
+
             try
             {
-                using var response = await _httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
+                using var response = await _httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, _cts.Token);
                 response.EnsureSuccessStatusCode();
 
                 var totalBytes = response.Content.Headers.ContentLength ?? -1L;
@@ -246,13 +275,7 @@ namespace MyLocalBackup.Core.Services
                     }
                 }
 
-                // Verify hash — refuse to install without one
-                if (string.IsNullOrEmpty(expectedSha256))
-                {
-                    try { File.Delete(destinationPath); } catch { }
-                    throw new InvalidOperationException(
-                        "Update rejected: no SHA256 hash found in release notes.\n\nThis may indicate a tampered update source.");
-                }
+                // Verify hash
                 if (sha256.Hash == null)
                 {
                     try { File.Delete(destinationPath); } catch { }

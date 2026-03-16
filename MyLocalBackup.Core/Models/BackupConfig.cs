@@ -46,5 +46,6 @@ namespace MyLocalBackup.Core.Models
         public bool ShowBackupNotifications { get; set; } = true;
         public bool AutoDeleteOldBackups { get; set; } = true;
         public bool MinimizeToTray { get; set; } = true;
+        public bool LaunchAtStartup { get; set; }
     }
 }
