@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="MyLocalBackup"
+           Manufacturer="MyLocalBackup"
+           Version="$(var.Version)"
+           UpgradeCode="7F4BAA0D-13C6-4FA3-B5CF-D0434D9F26B4"
+           InstallerVersion="500"
+           Scope="perUser">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of MyLocalBackup is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Icon Id="AppIcon" SourceFile="app.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="MsiLogging" Value="voicewarmupx" />
+    <Feature Id="MainFeature" Title="MyLocalBackup" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentGroupRef Id="AppFiles_cs" />
+      <ComponentGroupRef Id="AppFiles_de" />
+      <ComponentGroupRef Id="AppFiles_es" />
+      <ComponentGroupRef Id="AppFiles_fr" />
+      <ComponentGroupRef Id="AppFiles_it" />
+      <ComponentGroupRef Id="AppFiles_ja" />
+      <ComponentGroupRef Id="AppFiles_ko" />
+      <ComponentGroupRef Id="AppFiles_pl" />
+      <ComponentGroupRef Id="AppFiles_pt_BR" />
+      <ComponentGroupRef Id="AppFiles_ru" />
+      <ComponentGroupRef Id="AppFiles_tr" />
+      <ComponentGroupRef Id="AppFiles_zh_Hans" />
+      <ComponentGroupRef Id="AppFiles_zh_Hant" />
+      <ComponentGroupRef Id="ApplicationShortcuts" />
+    </Feature>
+  </Package>
+  <Fragment>
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="MyLocalBackup" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="MyLocalBackup" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="ApplicationShortcuts">
+      <Component Id="StartMenuShortcutComponent" Directory="ApplicationProgramsFolder" Guid="A9C8A4A1-1D3C-4EED-9F6F-BF9F4B2EAA11">
+        <Shortcut Id="ApplicationStartMenuShortcut"
+                  Name="MyLocalBackup"
+                  Description="MyLocalBackup"
+                  Target="[INSTALLFOLDER]MyLocalBackup.UI.exe"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="AppIcon"
+                  IconIndex="0" />
+        <RemoveFolder Id="RemoveApplicationProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\MyLocalBackup" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+
+      <Component Id="DesktopShortcutComponent" Directory="DesktopFolder" Guid="5F2CA1A2-9C67-4A7F-90AF-A2C4A9DF0D22">
+        <Shortcut Id="ApplicationDesktopShortcut"
+                  Name="MyLocalBackup"
+                  Description="MyLocalBackup"
+                  Target="[INSTALLFOLDER]MyLocalBackup.UI.exe"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="AppIcon"
+                  IconIndex="0" />
+        <RegistryValue Root="HKCU" Key="Software\MyLocalBackup" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

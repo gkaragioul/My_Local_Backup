@@ -1,0 +1,173 @@
+<UserControl x:Class="MyLocalBackup.UI.Views.DashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="450" d:DesignWidth="600"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True"
+             TextOptions.TextFormattingMode="Display"
+             TextOptions.TextRenderingMode="ClearType">
+    <Grid Margin="30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Top Area (Banners & Header) -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,25">
+            <!-- Backup Error Banner -->
+            <Border x:Name="BackupErrorBanner" Background="{DynamicResource ErrorBgBrush}" BorderBrush="{DynamicResource ErrorBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="15,10" Margin="0,0,0,10" Visibility="Collapsed">
+                <DockPanel>
+                    <TextBlock Text="&#xE783;" FontFamily="Segoe MDL2 Assets" Foreground="{DynamicResource ErrorBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <Button Content="✕" DockPanel.Dock="Right" Click="BtnCloseError_Click" Background="Transparent" Foreground="{DynamicResource TextMutedBrush}" FontWeight="Bold" BorderThickness="0" Cursor="Hand"/>
+                    <TextBlock x:Name="TxtBackupError" Text="Backup failed: Drive not found." VerticalAlignment="Center" Foreground="{DynamicResource ErrorBrush}" FontSize="13"/>
+                </DockPanel>
+            </Border>
+            
+            <TextBlock Text="Local Backup Dashboard" FontSize="28" FontWeight="Bold" Foreground="{DynamicResource TextBrush}"/>
+        </StackPanel>
+
+        <!-- Status & Progress Card -->
+        <Border Grid.Row="1" Style="{StaticResource GlassCardStyle}" Padding="25" Margin="0,0,0,25">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Width="60" Height="60" CornerRadius="30" Background="#1510B981" Margin="0,0,20,0">
+                        <Grid>
+                            <TextBlock x:Name="IconStatus" Text="&#xE73E;" FontFamily="Segoe MDL2 Assets"
+                                       FontSize="28" Foreground="{DynamicResource SuccessBrush}"
+                                       VerticalAlignment="Center" HorizontalAlignment="Center"
+                                       TextAlignment="Center"
+                                       RenderTransformOrigin="0.5,0.5">
+                                <TextBlock.RenderTransform>
+                                    <RotateTransform x:Name="IconRotation" Angle="0"/>
+                                </TextBlock.RenderTransform>
+                            </TextBlock>
+                        </Grid>
+                    </Border>
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock x:Name="TxtStatus" Text="System Protected" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="TxtLastBackup" Text="Last backup: Today at 09:30 AM" FontSize="14" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center"/>
+                            <TextBlock Text=" - " FontSize="14" Foreground="{DynamicResource TextMutedBrush}" x:Name="TxtLogSeparator" Visibility="Collapsed" VerticalAlignment="Center"/>
+                            <Button x:Name="BtnViewLogs" Content="View skipped files" Click="BtnViewLogs_Click" Visibility="Collapsed"
+                                    Style="{DynamicResource TransparentButtonStyle}" Foreground="{DynamicResource WarningBrush}"
+                                    FontSize="14" Padding="0" VerticalAlignment="Center" Cursor="Hand"/>
+                        </StackPanel>
+                        <TextBlock x:Name="TxtNextBackup" Text="Next backup: in 45m" FontSize="14" Foreground="{DynamicResource TextMutedBrush}" Visibility="Collapsed"/>
+
+                        <!-- Schedule Badge + Stop link -->
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Border x:Name="BadgeSchedule" Background="{DynamicResource BadgeBgBrush}" CornerRadius="4" Padding="8,3" VerticalAlignment="Center" Margin="0,0,8,0" Visibility="Collapsed">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE9D5;" FontFamily="Segoe MDL2 Assets" Foreground="{DynamicResource BadgeTextBrush}" FontSize="10" VerticalAlignment="Center" Margin="0,1,5,0"/>
+                                    <TextBlock x:Name="TxtScheduleRate" Text="Every 1h" Foreground="{DynamicResource BadgeTextBrush}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                            <Button x:Name="BtnStopAutoBackup" Content="Disable" Click="BtnStopAutoBackup_Click" Visibility="Collapsed"
+                                    Style="{StaticResource LinkButtonStyle}" Foreground="{DynamicResource TextMutedBrush}"
+                                    FontSize="11" Padding="0,3" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Right side: contextual action buttons -->
+                    <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                        <!-- Idle state buttons -->
+                        <StackPanel x:Name="PanelIdleActions" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button x:Name="BtnViewHistory" Content="View History" Click="BtnViewHistory_Click" Margin="0,0,12,0"
+                                    Style="{StaticResource LinkButtonStyle}" Foreground="{DynamicResource PrimaryBrush}" Padding="5,0"/>
+                            <Button x:Name="BtnBackupNow" Content="Back Up Now" Style="{StaticResource ModernButtonStyle}"
+                                    Click="BtnBackupNow_Click"/>
+                        </StackPanel>
+                        <!-- Running state buttons -->
+                        <StackPanel x:Name="PanelRunningActions" Orientation="Horizontal" HorizontalAlignment="Right" Visibility="Collapsed">
+                            <Button x:Name="BtnPause" Content="Pause" Click="BtnPause_Click" Margin="0,0,10,0"
+                                    Style="{StaticResource OutlinedButtonStyle}"/>
+                            <Button x:Name="BtnSkipBackup" Content="Skip This Backup" Style="{StaticResource ModernButtonStyle}"
+                                    Click="BtnBackupNow_Click" Background="{DynamicResource ErrorBrush}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Progress Section (Hidden by default) -->
+                <StackPanel x:Name="ProgressSection" Visibility="Collapsed" Margin="0,20,0,0">
+                    <DockPanel LastChildFill="True" Margin="0,0,0,8">
+                        <TextBlock x:Name="TxtProgressPercent" DockPanel.Dock="Right" Text="0%" FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}"/>
+                        <TextBlock x:Name="TxtProgressTask" Text="Analyzing files..." FontSize="13" Foreground="{DynamicResource TextMutedBrush}"/>
+                    </DockPanel>
+                    <ProgressBar x:Name="BackupProgressBar" Height="6" BorderThickness="0" Background="{DynamicResource BorderBrush}" Foreground="{DynamicResource PrimaryBrush}"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Config Section (Folders & Destination) -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Source Folders -->
+            <Grid Grid.Column="0" Margin="0,0,15,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <DockPanel Grid.Row="0" Margin="0,0,0,10">
+                    <TextBlock Text="Folders to Backup" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextBrush}"/>
+                    <Button Content="+ Add" Click="BtnAddFolder_Click" HorizontalAlignment="Right"
+                            Style="{DynamicResource TransparentButtonStyle}" Foreground="{DynamicResource PrimaryBrush}" Padding="5"/>
+                </DockPanel>
+                <Border Grid.Row="1" Style="{StaticResource GlassCardStyle}">
+                    <ListBox x:Name="LstFolders" BorderThickness="0" Padding="5" Background="Transparent"
+                             VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="8">
+                                    <DockPanel LastChildFill="True">
+                                        <Button DockPanel.Dock="Right" Content="&#xE711;" FontFamily="Segoe MDL2 Assets"
+                                                Style="{DynamicResource TransparentButtonStyle}" Foreground="{DynamicResource ErrorBrush}"
+                                                Click="BtnRemoveFolder_Click"/>
+                                        <TextBlock Text="{Binding}" VerticalAlignment="Center" FontSize="13" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextBrush}"/>
+                                    </DockPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+            </Grid>
+
+            <!-- Backup Destination -->
+            <Grid Grid.Column="1" Margin="15,0,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <DockPanel Grid.Row="0" Margin="0,0,0,10">
+                    <TextBlock Text="Backup Destination" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource TextBrush}"/>
+                    <Button x:Name="BtnChangeDestination" Content="Change" Click="BtnAddDestination_Click" HorizontalAlignment="Right"
+                            Style="{DynamicResource TransparentButtonStyle}" Foreground="{DynamicResource PrimaryBrush}" Padding="5"/>
+                </DockPanel>
+                <Border Grid.Row="1" Style="{StaticResource GlassCardStyle}">
+                    <Grid x:Name="GridDestination">
+                        <StackPanel x:Name="PanelDestination" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="15">
+                            <TextBlock x:Name="TxtDestName" Text="External Drive (D:)" FontWeight="SemiBold" FontSize="15" HorizontalAlignment="Center" Foreground="{DynamicResource TextBrush}"/>
+                            <TextBlock x:Name="TxtDestPath" Text="D:\MyBackups" FontSize="12" Foreground="{DynamicResource TextMutedBrush}" HorizontalAlignment="Center" Margin="0,5,0,0"/>
+                        </StackPanel>
+                        <TextBlock x:Name="TxtNoDest" Text="No destination set" Foreground="{DynamicResource ErrorBrush}" 
+                                   VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="Collapsed"/>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

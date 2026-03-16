@@ -1,0 +1,192 @@
+<Window x:Class="MyLocalBackup.UI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:tb="http://www.hardcodet.net/taskbar"
+        mc:Ignorable="d"
+        Title="MyLocalBackup" Height="600" Width="900"
+        Background="{DynamicResource BackgroundBrush}" WindowStyle="None" AllowsTransparency="True"
+        WindowStartupLocation="CenterScreen"
+        Icon="/Assets/logo.png"
+        MinWidth="900" MinHeight="600"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType">
+    
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="40" GlassFrameThickness="0" CornerRadius="8" ResizeBorderThickness="4"/>
+    </WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <!-- Horizontal Nav Button Style -->
+        <Style x:Key="HeaderNavButtonStyle" TargetType="RadioButton">
+            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+            <Setter Property="Height" Value="60"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border Name="Border" Padding="25,0" Background="Transparent" Margin="0" VerticalAlignment="Stretch">
+                            <Grid VerticalAlignment="Stretch">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="{TemplateBinding Tag}" FontFamily="Segoe MDL2 Assets" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{TemplateBinding Foreground}"/>
+                                    <ContentPresenter VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}"/>
+                                </StackPanel>
+                                <!-- Selection Indicator -->
+                                <Border Name="Indicator" Height="3" Background="{DynamicResource PrimaryBrush}" VerticalAlignment="Bottom" Margin="0,0,0,0" Visibility="Hidden" CornerRadius="1.5,1.5,0,0"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Indicator" Property="Visibility" Value="Visible"/>
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter TargetName="Border" Property="Background" Value="#1014B8A6"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="{DynamicResource BackgroundBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Footer Link Style (no background on hover) -->
+        <Style x:Key="FooterLinkStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryHoverBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="1">
+        <!-- Tray Icon -->
+        <tb:TaskbarIcon x:Name="MyNotifyIcon"
+                IconSource="/Assets/app.ico"
+                ToolTipText="MyLocalBackup - Active">
+            <tb:TaskbarIcon.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Open MyLocalBackup" Click="BtnShow_Click" FontWeight="Bold"/>
+                    <Separator/>
+                    <MenuItem Header="Run Backup Now" x:Name="TrayRunItem" Click="BtnBackupNowTray_Click"/>
+                    <MenuItem Header="Skip Current Backup" x:Name="TrayCancelItem" Click="BtnCancelTray_Click" Visibility="Collapsed" StaysOpenOnClick="True"/>
+                    <MenuItem Header="Pause Backups" IsCheckable="True" x:Name="TrayPauseItem" Click="TrayPause_Click" StaysOpenOnClick="True"/>
+                    <MenuItem Header="Stop Auto-Backup" x:Name="TrayStopAutoItem" Click="TrayStopAuto_Click"/>
+                    <Separator/>
+                    <MenuItem Header="Exit" Click="BtnExit_Click"/>
+                </ContextMenu>
+            </tb:TaskbarIcon.ContextMenu>
+        </tb:TaskbarIcon>
+
+        <Border Background="{DynamicResource BackgroundBrush}" CornerRadius="12" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="60"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Header / Top Nav -->
+                <Border Grid.Row="0" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" 
+                        WindowChrome.IsHitTestVisibleInChrome="True" MouseDown="Header_MouseDown">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Logo Area (Custom Icon + Text) -->
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0">
+                            <Image Source="/Assets/logo.png" Height="28" Width="28" Margin="0,0,10,0" RenderOptions.BitmapScalingMode="HighQuality"/>
+                            <TextBlock Text="MyLocalBackup" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}" VerticalAlignment="Center"/>
+                        </StackPanel>
+
+                        <!-- Navigation Tabs (Fixed Clickability) -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
+                            <RadioButton x:Name="NavDashboard" IsChecked="True" Style="{StaticResource HeaderNavButtonStyle}" Content="Dashboard" Tag="&#xE80F;" Click="Nav_Click"/>
+                            <RadioButton x:Name="NavSettings" Style="{StaticResource HeaderNavButtonStyle}" Content="Settings" Tag="&#xE713;" Click="Nav_Click"/>
+                        </StackPanel>
+
+                        <!-- Window Controls -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top" WindowChrome.IsHitTestVisibleInChrome="True">
+                            <Button Name="BtnMinimize" Content="&#xE921;" FontFamily="Segoe MDL2 Assets" Width="46" Height="40" Style="{StaticResource ChromeButtonStyle}" Click="BtnMinimize_Click" Foreground="{DynamicResource TextBrush}"/>
+                            <Button Name="BtnClose" Content="&#xE8BB;" FontFamily="Segoe MDL2 Assets" Width="46" Height="40" Style="{StaticResource ChromeButtonStyle}" Click="BtnClose_Click" Foreground="{DynamicResource TextBrush}"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Main Content -->
+                <Grid Grid.Row="1">
+                    <ContentControl x:Name="ContentArea" />
+                    
+                    <Border x:Name="AboutOverlay" Background="#AA000000" Visibility="Collapsed">
+                        <Border Background="{DynamicResource CardBrush}" CornerRadius="12" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" 
+                                Width="450" Height="380" Padding="30" VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                
+                                <TextBlock Grid.Row="0" Text="About MyLocalBackup" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,15"/>
+                                
+                                <ScrollViewer Grid.Row="1" Margin="0,0,0,15">
+                                    <StackPanel>
+                                        <TextBlock Text="Developer: George Karagioules" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,5"/>
+                                        <TextBlock Text="Year: 2026" Margin="0,0,0,10" Foreground="{DynamicResource TextMutedBrush}"/>
+                                        
+                                        <TextBlock Text="MIT License" FontWeight="Bold" FontSize="12" Foreground="{DynamicResource PrimaryBrush}" Margin="0,10,0,5"/>
+                                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextMutedBrush}">
+                                            Copyright © 2026 George Karagioules&#x0a;&#x0a;
+                                            Permission is hereby granted, free of charge, to any person obtaining a copy of this software, to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the software, subject to the following conditions:&#x0a;&#x0a;
+                                            The above copyright notice and this permission notice shall be included in all copies or substantial portions of the software.&#x0a;&#x0a;
+                                            THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. USE AS A SUPPLEMENT TO OTHER BACKUP STRATEGIES — THE DEVELOPER IS NOT LIABLE FOR DATA LOSS.
+                                        </TextBlock>
+                                    </StackPanel>
+                                </ScrollViewer>
+                                
+                                <Button Grid.Row="2" Content="Close" Style="{StaticResource ModernButtonStyle}" HorizontalAlignment="Center" Width="100" Click="BtnCloseAbout_Click"/>
+                            </Grid>
+                        </Border>
+                    </Border>
+                </Grid>
+
+                <!-- Footer -->
+                <Border Grid.Row="2" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="15,8">
+                    <Grid>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="TxtVersion" Text="Version --" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center"/>
+                            <Separator Width="1" Height="10" Background="{DynamicResource BorderBrush}" Margin="10,0"/>
+                            <Button x:Name="BtnCheckUpdates" Content="Check for Updates" Style="{StaticResource FooterLinkStyle}" Click="BtnCheckUpdates_Click"/>
+                            <Separator Width="1" Height="10" Background="{DynamicResource BorderBrush}" Margin="10,0"/>
+                            <Button Content="About" Style="{StaticResource FooterLinkStyle}" Click="BtnShowAbout_Click"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
+
+</Window>

@@ -1,0 +1,47 @@
+# .gitignore for MyLocalBackup (.NET/WPF)
+
+# Strong name key (private key — never commit)
+*.snk
+
+# Build results
+[Bb]in/
+[Oo]bj/
+[Tt]est[Rr]esults/
+publish/
+
+# Visual Studio
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+*.rsuser
+*.suo
+
+# Visual Studio Code
+.vscode/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# MyLocalBackup Local Data (Avoid pushing user config/db)
+MyLocalBackup_Snapshots/
+config.json
+metadata.db
+**/MyLocalBackup_Snapshots/
+**/config.json
+**/metadata.db
+
+# Build artifacts and installer
+*.key
+*.xml
+*.msi
+Staging/
+# Track WiX installer source files despite Staging/ being ignored
+!Staging/MyLocalBackup_Setup/Package.wxs
+!Staging/MyLocalBackup_Setup/Files.wxs
+
+# Temp files
+test.bat
+build_log.txt
+*_Website_Features.md

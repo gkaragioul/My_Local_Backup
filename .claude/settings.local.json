@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(powershell:*)",
+      "Bash(findstr:*)",
+      "Bash(git push)",
+      "Bash(cd:*)"
+    ]
+  }
+}
