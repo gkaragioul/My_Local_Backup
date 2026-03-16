@@ -122,8 +122,8 @@
                             <TextBlock Text="MyLocalBackup" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}" VerticalAlignment="Center"/>
                         </StackPanel>
 
-                        <!-- Navigation Tabs (Fixed Clickability) -->
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
+                        <!-- Navigation Tabs -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
                             <RadioButton x:Name="NavDashboard" IsChecked="True" Style="{StaticResource HeaderNavButtonStyle}" Content="Dashboard" Tag="&#xE80F;" Click="Nav_Click"/>
                             <RadioButton x:Name="NavSettings" Style="{StaticResource HeaderNavButtonStyle}" Content="Settings" Tag="&#xE713;" Click="Nav_Click"/>
                         </StackPanel>

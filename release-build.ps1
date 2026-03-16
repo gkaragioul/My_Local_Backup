@@ -122,7 +122,7 @@ Set-Content $packageWxs -Value $pkgContent -Encoding UTF8
 Write-Host "  Package.wxs Feature block updated with $($localeGroupIds.Count) locale refs" -ForegroundColor Gray
 
 Push-Location $msiDir
-wix build Package.wxs Files.wxs -d "Version=$Version" -o MyLocalBackupSetup.msi
+wix build Package.wxs Files.wxs -d "Version=$Version" -ext WixToolset.UI.wixext -o MyLocalBackupSetup.msi
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw "MSI build failed" }
 Pop-Location
 

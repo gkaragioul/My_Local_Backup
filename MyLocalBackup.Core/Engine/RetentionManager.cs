@@ -196,14 +196,14 @@ namespace MyLocalBackup.Core.Engine
                 else
                 {
                     // Revert so the next retention run can retry rather than orphaning the record
-                    RevertSnapshotStatus(snapshot.Id);
+                    RevertSnapshotStatus(snapshot.Id, snapshot.Status);
                     Logger.Log($"Warning: Directory still exists after deletion attempt, reverting status for retry: {snapshot.Path}");
                 }
             }
             catch (Exception ex)
             {
                 // Revert so this snapshot isn't permanently stuck as Deleting
-                if (!RevertSnapshotStatus(snapshot.Id))
+                if (!RevertSnapshotStatus(snapshot.Id, snapshot.Status))
                 {
                     // Revert failed — snapshot is stuck as Deleting until next app startup self-check
                     _stuckSnapshotIds.Add(snapshot.Id);
@@ -214,14 +214,14 @@ namespace MyLocalBackup.Core.Engine
         }
 
         /// <summary>
-        /// Reverts a snapshot from Deleting back to Completed so the next retention run can retry.
+        /// Reverts a snapshot from Deleting back to its original status so the next retention run can retry.
         /// Returns true if revert succeeded, false if it failed.
         /// </summary>
-        private bool RevertSnapshotStatus(int snapshotId)
+        private bool RevertSnapshotStatus(int snapshotId, BackupStatus originalStatus)
         {
             try
             {
-                _db.UpdateRestorePointStatus(snapshotId, BackupStatus.Completed);
+                _db.UpdateRestorePointStatus(snapshotId, originalStatus);
                 return true;
             }
             catch (Exception revertEx)

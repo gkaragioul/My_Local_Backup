@@ -116,8 +116,8 @@ namespace MyLocalBackup.UI
 
                 // 2. Initialize Database
                 var dbPath = System.IO.Path.Combine(
-                    System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), 
-                    "MyLocalBackup", 
+                    System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
+                    "MyLocalBackup",
                     "metadata.db"
                 );
                 Logger.Log($"Connecting to database: {dbPath}");
@@ -130,7 +130,7 @@ namespace MyLocalBackup.UI
                 // 3. Initialize Scheduler
                 Logger.Log("Initializing scheduler...");
                 Scheduler = new BackupScheduler(ConfigManager.Config, DatabaseManager);
-                
+
                 // Hook up global logs
                 Scheduler.BackupStarted += (s, m) => Logger.Log($"Backup started: {m}");
                 Scheduler.BackupCompleted += (s, data) => Logger.Log($"Backup completed. Success: {data.success}{(data.failedFiles?.Count > 0 ? $", {data.failedFiles.Count} file(s) failed" : "")}");
@@ -147,9 +147,6 @@ namespace MyLocalBackup.UI
                 Logger.Log("Startup complete. Creating MainWindow...");
 
                 // 5. Explicitly create and show MainWindow — all services are ready.
-                // We removed StartupUri from App.xaml to prevent WPF from creating MainWindow
-                // before our initialization is complete (which caused NullReferenceException
-                // in SettingsView when ConfigManager was not yet assigned).
                 base.OnStartup(e);
                 var mainWindow = new MainWindow();
                 MainWindow = mainWindow;
@@ -165,41 +162,41 @@ namespace MyLocalBackup.UI
 
         private static void PerformSelfCheck(Core.Data.DatabaseManager db)
         {
+            // Run with a hard timeout — never block startup for more than 5 seconds.
+            // If the old database is corrupted/locked, just skip and let the user start the app.
             try
             {
-                var rps = db.GetRestorePoints();
-
-                // Safety: if ALL restore points are orphaned, possible DB corruption — skip
-                var totalCount = rps.Count;
-                var orphanedCount = rps.Count(rp => rp.Status == Core.Models.BackupStatus.Deleting || rp.Status == Core.Models.BackupStatus.InProgress);
-                if (totalCount > 2 && orphanedCount == totalCount)
+                var task = System.Threading.Tasks.Task.Run(() => PerformSelfCheckInner(db));
+                if (!task.Wait(TimeSpan.FromSeconds(5)))
                 {
-                    Logger.Log("WARNING: Self-check skipped — all restore points have Deleting/InProgress status. Possible corruption.");
-                    return;
-                }
-
-                foreach (var rp in rps)
-                {
-                    if (rp.Status == Core.Models.BackupStatus.Deleting || rp.Status == Core.Models.BackupStatus.InProgress)
-                    {
-                        Logger.Log($"Found orphaned restore point {rp.Id} ({rp.Status}). Cleaning up...");
-                        try
-                        {
-                            if (System.IO.Directory.Exists(rp.Path))
-                                System.IO.Directory.Delete(rp.Path, true);
-                            db.DeleteRestorePoint(rp.Id);
-                            Logger.Log($"Cleaned up orphaned restore point {rp.Id}.");
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Log($"Failed to clean up orphaned restore point {rp.Id}: {ex.Message}");
-                        }
-                    }
+                    Logger.Log("WARNING: Self-check timed out after 5 seconds. Skipping.");
                 }
             }
             catch (Exception ex)
             {
                 Logger.Log($"Self-check failed: {ex.Message}");
+            }
+        }
+
+        private static void PerformSelfCheckInner(Core.Data.DatabaseManager db)
+        {
+            var rps = db.GetRestorePoints();
+
+            foreach (var rp in rps)
+            {
+                if (rp.Status == Core.Models.BackupStatus.Deleting || rp.Status == Core.Models.BackupStatus.InProgress)
+                {
+                    Logger.Log($"Found orphaned restore point {rp.Id} ({rp.Status}). Removing DB record...");
+                    try
+                    {
+                        db.DeleteRestorePoint(rp.Id);
+                        Logger.Log($"Removed orphaned DB record {rp.Id}.");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Log($"Failed to clean up orphaned restore point {rp.Id}: {ex.Message}");
+                    }
+                }
             }
         }
 

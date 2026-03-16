@@ -112,6 +112,10 @@ namespace MyLocalBackup.Core.Services
 
                     if (setupAsset != null)
                     {
+                        var downloadUrl = setupAsset["browser_download_url"]?.GetValue<string>();
+                        if (string.IsNullOrEmpty(downloadUrl))
+                            return null; // Asset exists but has no download URL — skip
+
                         // Try GitHub asset digest first, then parse from release notes body
                         string? sha256 = null;
                         var digest = setupAsset["digest"]?.GetValue<string>();
@@ -130,7 +134,7 @@ namespace MyLocalBackup.Core.Services
                         return new UpdateInfo
                         {
                             Version = tagName,
-                            DownloadUrl = setupAsset["browser_download_url"]?.GetValue<string>() ?? "",
+                            DownloadUrl = downloadUrl,
                             ReleaseNotes = release?["body"]?.GetValue<string>() ?? "No release notes.",
                             FileName = setupAsset["name"]?.GetValue<string>() ?? "setup.exe",
                             ExpectedSha256 = sha256
@@ -312,8 +316,9 @@ namespace MyLocalBackup.Core.Services
                 {
                     var logPath = Path.Combine(Path.GetTempPath(), "mlb_install.log");
 
-                    var appExePath = Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    // Use the current exe's location so this works regardless of install directory
+                    var appExePath = Environment.ProcessPath ?? Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
                         "MyLocalBackup",
                         "MyLocalBackup.UI.exe"
                     );

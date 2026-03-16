@@ -32,6 +32,8 @@ Both releases (source + releases repo) must be created. The app will only detect
 ### Critical Rules
 
 - **NEVER push to GitHub before user tests the MSI on their machine**
+- **NEVER install, uninstall, or run the MSI yourself** — only the user installs and tests on their machine
+- **NEVER run msiexec or any installer commands** — the build script copies the MSI to the user's Desktop; they handle it from there
 - **If Files.wxs is stale** (DLL count mismatch after .NET SDK update), the script auto-regenerates it
 - **No obfuscation** — this is open source
 
@@ -56,7 +58,7 @@ Versions follow `0.7.X` pattern. Check last commit message or `.csproj` for curr
 - Target framework: .NET 9.0 (Windows)
 - Database: SQLite via Microsoft.Data.Sqlite
 - UI: WPF with dark-mode-only theme
-- Installer: WiX v4 MSI (per-user install to `%LocalAppData%\MyLocalBackup`)
+- Installer: WiX v5 MSI (per-machine install to `%ProgramFiles%\MyLocalBackup`, requires admin)
 - Hard link deduplication for backup storage (NTFS only)
 - Self-contained publish (bundles .NET runtime)
 - Update security: SHA256 hash required in release notes, verified before install
