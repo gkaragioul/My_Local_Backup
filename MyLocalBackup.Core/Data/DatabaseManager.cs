@@ -405,7 +405,7 @@ namespace MyLocalBackup.Core.Data
         /// Returns a dictionary for O(1) lookup during backup.
         /// Limited to 200k unique entries to prevent excessive memory usage on low-end machines.
         /// </summary>
-        public Dictionary<(long size, string lwt), (int rpId, string relativePath)> GetDedupIndex(string destinationRoot, SqliteConnection? existingConnection = null)
+        public Dictionary<(long size, string lwt), (int rpId, string relativePath)> GetDedupIndex(string destinationRoot, SqliteConnection? existingConnection = null, CancellationToken cancellationToken = default)
         {
             const int MaxDedupEntries = 200_000; // Reduced from 500K to limit memory (~60MB max)
             var result = new Dictionary<(long size, string lwt), (int rpId, string relativePath)>(MaxDedupEntries);
@@ -430,8 +430,13 @@ namespace MyLocalBackup.Core.Data
                 command.Parameters.AddWithValue("$dest", destinationRoot);
 
                 using var reader = command.ExecuteReader();
+                int rowCount = 0;
                 while (reader.Read() && result.Count < MaxDedupEntries)
                 {
+                    // Check cancellation every 10,000 rows to stay responsive without per-row overhead
+                    if (++rowCount % 10_000 == 0)
+                        cancellationToken.ThrowIfCancellationRequested();
+
                     var size = reader.GetInt64(0);
                     var lwt = reader.GetString(1);
                     var key = (size, lwt);

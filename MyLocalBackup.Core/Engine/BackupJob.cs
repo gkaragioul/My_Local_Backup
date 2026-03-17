@@ -255,7 +255,7 @@ namespace MyLocalBackup.Core.Engine
                 // Pre-load dedup index for O(1) lookups instead of DB query per file
                 _cancellationToken.ThrowIfCancellationRequested();
                 onProgress?.Invoke(6, "Building deduplication index...");
-                _dedupIndex = _centralDb.GetDedupIndex(_destinationRoot, masterCentralConn);
+                _dedupIndex = _centralDb.GetDedupIndex(_destinationRoot, masterCentralConn, _cancellationToken);
                 _cancellationToken.ThrowIfCancellationRequested();
                 _restorePointCache = _centralDb.GetRestorePoints(masterCentralConn)
                     .Where(r => r.TargetDestination == _destinationRoot && (r.Status == BackupStatus.Completed || r.Status == BackupStatus.CompletedWithErrors))
