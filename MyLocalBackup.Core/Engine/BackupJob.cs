@@ -230,7 +230,7 @@ namespace MyLocalBackup.Core.Engine
                 // Detect if destination was formatted: check if any previous snapshots still exist on disk
                 _cancellationToken.ThrowIfCancellationRequested();
                 onProgress?.Invoke(3, "Checking destination state...");
-                CleanupStaleRestorePoints(masterCentralConn, snapshotsPath);
+                CleanupStaleRestorePoints(masterCentralConn, snapshotsPath, onProgress);
 
                 onProgress?.Invoke(4, "Creating backup records...");
                 rpCentral = new RestorePoint
@@ -382,7 +382,7 @@ namespace MyLocalBackup.Core.Engine
         /// Detects if the destination was formatted by checking if previous snapshots still exist.
         /// If snapshots are missing (drive was formatted), removes stale records from central DB.
         /// </summary>
-        private void CleanupStaleRestorePoints(SqliteConnection centralConn, string snapshotsPath)
+        private void CleanupStaleRestorePoints(SqliteConnection centralConn, string snapshotsPath, Action<double, string>? onProgress = null)
         {
             try
             {
@@ -397,9 +397,13 @@ namespace MyLocalBackup.Core.Engine
                     _cancellationToken.ThrowIfCancellationRequested();
                     try
                     {
-                        Logger.Log($"Cleaning up partial snapshot from previous run: {Path.GetFileName(partial.Path)}");
+                        var folderName = Path.GetFileName(partial.Path);
+                        Logger.Log($"Cleaning up partial snapshot from previous run: {folderName}");
                         if (Directory.Exists(partial.Path))
+                        {
+                            onProgress?.Invoke(3, $"Cleaning up cancelled backup ({folderName})...");
                             Directory.Delete(partial.Path, true);
+                        }
 
                         // Only remove DB record after confirming filesystem is clean
                         if (!Directory.Exists(partial.Path))
