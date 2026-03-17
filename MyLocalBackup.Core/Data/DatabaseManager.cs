@@ -147,6 +147,7 @@ namespace MyLocalBackup.Core.Data
                         );
 
                         CREATE INDEX IF NOT EXISTS idx_file_path ON FileEntries(RelativePath);
+                        CREATE INDEX IF NOT EXISTS idx_file_rpid ON FileEntries(RestorePointId);
                         CREATE INDEX IF NOT EXISTS idx_restore_timestamp ON RestorePoints(Timestamp);
                         CREATE INDEX IF NOT EXISTS idx_file_dedup ON FileEntries(Size, LastWriteTime);
                         CREATE INDEX IF NOT EXISTS idx_restore_destination ON RestorePoints(TargetDestination);
@@ -415,36 +416,54 @@ namespace MyLocalBackup.Core.Data
 
             try
             {
-                using var command = connection.CreateCommand();
-                // Query ordered by most recent first, limited to prevent loading millions of rows
-                command.CommandText = @"
-                    SELECT f.Size, f.LastWriteTime, f.RestorePointId, f.RelativePath
-                    FROM FileEntries f
-                    JOIN RestorePoints r ON f.RestorePointId = r.Id
-                    WHERE r.Status IN ($s1, $s2) AND r.TargetDestination = $dest AND f.IsDirectory = 0
-                    ORDER BY r.Timestamp DESC
-                    LIMIT $maxLimit";
-                command.Parameters.AddWithValue("$s1", (int)BackupStatus.Completed);
-                command.Parameters.AddWithValue("$s2", (int)BackupStatus.CompletedWithErrors);
-                command.Parameters.AddWithValue("$maxLimit", MaxDedupEntries);
-                command.Parameters.AddWithValue("$dest", destinationRoot);
+                // Two-step approach: first get valid restore point IDs (small table),
+                // then query file entries using the indexed RestorePointId column.
+                // This avoids a full-table JOIN + ORDER BY on millions of rows.
+                using var rpCmd = connection.CreateCommand();
+                rpCmd.CommandText = @"
+                    SELECT Id FROM RestorePoints
+                    WHERE Status IN ($s1, $s2) AND TargetDestination = $dest
+                    ORDER BY Timestamp DESC";
+                rpCmd.Parameters.AddWithValue("$s1", (int)BackupStatus.Completed);
+                rpCmd.Parameters.AddWithValue("$s2", (int)BackupStatus.CompletedWithErrors);
+                rpCmd.Parameters.AddWithValue("$dest", destinationRoot);
 
-                using var reader = command.ExecuteReader();
-                int rowCount = 0;
-                while (reader.Read() && result.Count < MaxDedupEntries)
+                var rpIds = new List<int>();
+                using (var rpReader = rpCmd.ExecuteReader())
                 {
-                    // Check cancellation every 10,000 rows to stay responsive without per-row overhead
-                    if (++rowCount % 10_000 == 0)
-                        cancellationToken.ThrowIfCancellationRequested();
+                    while (rpReader.Read())
+                        rpIds.Add(rpReader.GetInt32(0));
+                }
 
-                    var size = reader.GetInt64(0);
-                    var lwt = reader.GetString(1);
-                    var key = (size, lwt);
+                // Query file entries per restore point (most recent first) until we hit the limit
+                using var command = connection.CreateCommand();
+                command.CommandText = @"
+                    SELECT Size, LastWriteTime, RestorePointId, RelativePath
+                    FROM FileEntries
+                    WHERE RestorePointId = $rpId AND IsDirectory = 0";
+                command.Parameters.AddWithValue("$rpId", 0);
 
-                    // Only keep the first (most recent) match for each size+lwt combo
-                    if (!result.ContainsKey(key))
+                int rowCount = 0;
+                foreach (var rpId in rpIds)
+                {
+                    if (result.Count >= MaxDedupEntries) break;
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    command.Parameters["$rpId"].Value = rpId;
+                    using var reader = command.ExecuteReader();
+                    while (reader.Read() && result.Count < MaxDedupEntries)
                     {
-                        result[key] = (reader.GetInt32(2), reader.GetString(3));
+                        if (++rowCount % 10_000 == 0)
+                            cancellationToken.ThrowIfCancellationRequested();
+
+                        var size = reader.GetInt64(0);
+                        var lwt = reader.GetString(1);
+                        var key = (size, lwt);
+
+                        if (!result.ContainsKey(key))
+                        {
+                            result[key] = (reader.GetInt32(2), reader.GetString(3));
+                        }
                     }
                 }
             }
