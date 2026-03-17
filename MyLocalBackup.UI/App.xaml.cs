@@ -184,17 +184,33 @@ namespace MyLocalBackup.UI
 
             foreach (var rp in rps)
             {
-                if (rp.Status == Core.Models.BackupStatus.Deleting || rp.Status == Core.Models.BackupStatus.InProgress)
+                if (rp.Status == Core.Models.BackupStatus.InProgress)
                 {
-                    Logger.Log($"Found orphaned restore point {rp.Id} ({rp.Status}). Removing DB record...");
+                    // Crashed mid-backup — mark as Interrupted so next backup cleans up the directory
+                    Logger.Log($"Found orphaned InProgress restore point {rp.Id}. Marking as Interrupted...");
                     try
                     {
-                        db.DeleteRestorePoint(rp.Id);
-                        Logger.Log($"Removed orphaned DB record {rp.Id}.");
+                        db.UpdateRestorePointStatus(rp.Id, Core.Models.BackupStatus.Interrupted);
+                        Logger.Log($"Marked restore point {rp.Id} as Interrupted for cleanup.");
                     }
                     catch (Exception ex)
                     {
-                        Logger.Log($"Failed to clean up orphaned restore point {rp.Id}: {ex.Message}");
+                        Logger.Log($"Failed to update orphaned restore point {rp.Id}: {ex.Message}");
+                    }
+                }
+                else if (rp.Status == Core.Models.BackupStatus.Deleting)
+                {
+                    if (!System.IO.Directory.Exists(rp.Path))
+                    {
+                        // Background delete already finished — remove DB record
+                        Logger.Log($"Deleting restore point {rp.Id} already cleaned from disk. Removing DB record...");
+                        try { db.DeleteRestorePoint(rp.Id); }
+                        catch (Exception ex) { Logger.Log($"Failed to remove DB record {rp.Id}: {ex.Message}"); }
+                    }
+                    else
+                    {
+                        // Directory still exists — keep DB record so next backup queues background delete
+                        Logger.Log($"Deleting restore point {rp.Id} still has directory on disk. Will resume cleanup on next backup.");
                     }
                 }
             }

@@ -230,7 +230,7 @@ namespace MyLocalBackup.Core.Engine
                 // Detect if destination was formatted: check if any previous snapshots still exist on disk
                 _cancellationToken.ThrowIfCancellationRequested();
                 onProgress?.Invoke(3, "Checking destination state...");
-                CleanupStaleRestorePoints(masterCentralConn, snapshotsPath, onProgress);
+                CleanupStaleRestorePoints(masterCentralConn, snapshotsPath);
 
                 onProgress?.Invoke(4, "Creating backup records...");
                 rpCentral = new RestorePoint
@@ -383,45 +383,51 @@ namespace MyLocalBackup.Core.Engine
         /// If snapshots are missing (drive was formatted), removes stale records from central DB.
         /// </summary>
         /// <summary>
-        /// Recursively deletes a directory while reporting progress and respecting cancellation.
-        /// Unlike Directory.Delete(path, true) this doesn't block as a single uninterruptible call.
+        /// Recursively deletes a directory in the background, respecting cancellation.
+        /// Logs progress but does not block the caller.
         /// </summary>
-        private void DeleteDirectoryWithProgress(string path, string displayName, Action<double, string>? onProgress)
+        private static void DeleteDirectoryInBackground(string path, string displayName, CancellationToken ct)
         {
-            // Count files first for progress reporting
-            long totalFiles = 0;
-            try { totalFiles = Directory.GetFiles(path, "*", SearchOption.AllDirectories).Length; }
-            catch { /* best-effort count */ }
-
-            long deleted = 0;
-            var lastUpdate = DateTime.MinValue;
-
-            // Delete files in all subdirectories (bottom-up)
-            foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+            Task.Run(() =>
             {
-                _cancellationToken.ThrowIfCancellationRequested();
-                try { File.Delete(file); }
-                catch { /* skip locked files, Directory.Delete will retry */ }
-
-                deleted++;
-
-                // Update progress every 500ms to avoid UI flooding
-                if ((DateTime.Now - lastUpdate).TotalMilliseconds > 500)
+                try
                 {
-                    var msg = totalFiles > 0
-                        ? $"Cleaning up cancelled backup ({displayName}): {deleted:N0}/{totalFiles:N0} files..."
-                        : $"Cleaning up cancelled backup ({displayName}): {deleted:N0} files...";
-                    onProgress?.Invoke(3, msg);
-                    lastUpdate = DateTime.Now;
-                }
-            }
+                    long deleted = 0;
+                    var lastLog = DateTime.MinValue;
 
-            // Now remove the empty directory tree
-            try { Directory.Delete(path, true); }
-            catch { /* will be retried next run if it fails */ }
+                    foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+                    {
+                        if (ct.IsCancellationRequested)
+                        {
+                            Logger.Log($"Background cleanup of '{displayName}' paused by cancellation at {deleted:N0} files. Will resume next run.");
+                            return;
+                        }
+
+                        try { File.Delete(file); }
+                        catch { /* skip locked files */ }
+                        deleted++;
+
+                        if ((DateTime.Now - lastLog).TotalSeconds > 30)
+                        {
+                            Logger.Log($"Background cleanup '{displayName}': {deleted:N0} files deleted...");
+                            lastLog = DateTime.Now;
+                        }
+                    }
+
+                    // Remove the now-empty directory tree
+                    try { Directory.Delete(path, true); }
+                    catch { /* will be retried next run */ }
+
+                    Logger.Log($"Background cleanup of '{displayName}' complete: {deleted:N0} files deleted.");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Log($"Warning: Background cleanup of '{displayName}' failed: {ex.Message}");
+                }
+            }, CancellationToken.None); // Don't tie to backup token — let it keep running
         }
 
-        private void CleanupStaleRestorePoints(SqliteConnection centralConn, string snapshotsPath, Action<double, string>? onProgress = null)
+        private void CleanupStaleRestorePoints(SqliteConnection centralConn, string snapshotsPath)
         {
             try
             {
@@ -437,26 +443,53 @@ namespace MyLocalBackup.Core.Engine
                     try
                     {
                         var folderName = Path.GetFileName(partial.Path);
-                        Logger.Log($"Cleaning up partial snapshot from previous run: {folderName}");
+
                         if (Directory.Exists(partial.Path))
                         {
-                            DeleteDirectoryWithProgress(partial.Path, folderName, onProgress);
-                        }
-
-                        // Only remove DB record after confirming filesystem is clean
-                        if (!Directory.Exists(partial.Path))
-                        {
-                            _centralDb.DeleteRestorePoint(partial.Id, centralConn);
+                            // Mark as Deleting in DB so it won't be picked up as a valid snapshot
+                            _centralDb.UpdateRestorePointStatus(partial.Id, BackupStatus.Deleting, centralConn);
+                            Logger.Log($"Queued background cleanup of partial snapshot: {folderName}");
+                            DeleteDirectoryInBackground(partial.Path, folderName, _cancellationToken);
                         }
                         else
                         {
-                            Logger.Log($"Warning: Directory still exists after cleanup attempt for snapshot {partial.Id}, keeping DB record for retry.");
+                            // Directory already gone — just remove the DB record
+                            _centralDb.DeleteRestorePoint(partial.Id, centralConn);
                         }
                     }
                     catch (OperationCanceledException) { throw; }
                     catch (Exception ex)
                     {
                         Logger.Log($"Warning: Could not clean up partial snapshot {partial.Id}: {ex}");
+                    }
+                }
+
+                // Also clean up any snapshots previously marked as Deleting (background delete from prior run)
+                var deletingSnapshots = _centralDb.GetRestorePoints(centralConn)
+                    .Where(x => x.TargetDestination == _destinationRoot && x.Status == BackupStatus.Deleting)
+                    .ToList();
+
+                foreach (var deleting in deletingSnapshots)
+                {
+                    _cancellationToken.ThrowIfCancellationRequested();
+                    try
+                    {
+                        if (Directory.Exists(deleting.Path))
+                        {
+                            var folderName = Path.GetFileName(deleting.Path);
+                            Logger.Log($"Resuming background cleanup of: {folderName}");
+                            DeleteDirectoryInBackground(deleting.Path, folderName, _cancellationToken);
+                        }
+                        else
+                        {
+                            // Already fully deleted — remove DB record
+                            _centralDb.DeleteRestorePoint(deleting.Id, centralConn);
+                        }
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex)
+                    {
+                        Logger.Log($"Warning: Could not resume cleanup of snapshot {deleting.Id}: {ex}");
                     }
                 }
 
@@ -469,7 +502,6 @@ namespace MyLocalBackup.Core.Engine
                 if (existingSnapshots.Count == 0) return;
 
                 // Check if any of the recorded snapshots actually exist on disk
-                var validSnapshots = existingSnapshots.Where(rp => Directory.Exists(rp.Path)).ToList();
                 var staleSnapshots = existingSnapshots.Where(rp => !Directory.Exists(rp.Path)).ToList();
 
                 if (staleSnapshots.Count > 0)
@@ -490,7 +522,7 @@ namespace MyLocalBackup.Core.Engine
                         }
                     }
 
-                    if (validSnapshots.Count == 0)
+                    if (existingSnapshots.Count == staleSnapshots.Count)
                     {
                         Logger.Log("No valid previous backups found on destination. Starting fresh backup.");
                     }
