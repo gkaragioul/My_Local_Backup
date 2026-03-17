@@ -382,6 +382,45 @@ namespace MyLocalBackup.Core.Engine
         /// Detects if the destination was formatted by checking if previous snapshots still exist.
         /// If snapshots are missing (drive was formatted), removes stale records from central DB.
         /// </summary>
+        /// <summary>
+        /// Recursively deletes a directory while reporting progress and respecting cancellation.
+        /// Unlike Directory.Delete(path, true) this doesn't block as a single uninterruptible call.
+        /// </summary>
+        private void DeleteDirectoryWithProgress(string path, string displayName, Action<double, string>? onProgress)
+        {
+            // Count files first for progress reporting
+            long totalFiles = 0;
+            try { totalFiles = Directory.GetFiles(path, "*", SearchOption.AllDirectories).Length; }
+            catch { /* best-effort count */ }
+
+            long deleted = 0;
+            var lastUpdate = DateTime.MinValue;
+
+            // Delete files in all subdirectories (bottom-up)
+            foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+            {
+                _cancellationToken.ThrowIfCancellationRequested();
+                try { File.Delete(file); }
+                catch { /* skip locked files, Directory.Delete will retry */ }
+
+                deleted++;
+
+                // Update progress every 500ms to avoid UI flooding
+                if ((DateTime.Now - lastUpdate).TotalMilliseconds > 500)
+                {
+                    var msg = totalFiles > 0
+                        ? $"Cleaning up cancelled backup ({displayName}): {deleted:N0}/{totalFiles:N0} files..."
+                        : $"Cleaning up cancelled backup ({displayName}): {deleted:N0} files...";
+                    onProgress?.Invoke(3, msg);
+                    lastUpdate = DateTime.Now;
+                }
+            }
+
+            // Now remove the empty directory tree
+            try { Directory.Delete(path, true); }
+            catch { /* will be retried next run if it fails */ }
+        }
+
         private void CleanupStaleRestorePoints(SqliteConnection centralConn, string snapshotsPath, Action<double, string>? onProgress = null)
         {
             try
@@ -401,8 +440,7 @@ namespace MyLocalBackup.Core.Engine
                         Logger.Log($"Cleaning up partial snapshot from previous run: {folderName}");
                         if (Directory.Exists(partial.Path))
                         {
-                            onProgress?.Invoke(3, $"Cleaning up cancelled backup ({folderName})...");
-                            Directory.Delete(partial.Path, true);
+                            DeleteDirectoryWithProgress(partial.Path, folderName, onProgress);
                         }
 
                         // Only remove DB record after confirming filesystem is clean
