@@ -2,7 +2,7 @@
 
 ## Overview
 
-MyLocalBackup is a **free, open-source** versioned local backup tool for Windows. No licensing, no activation, no trial — completely free.
+MyLocalBackup is a **free** versioned local backup tool for Windows (freeware). No activation, no trial — completely free to use. Source code is visible but not open-source (no rights to modify, redistribute, or sell).
 
 ## GitHub Account & Repositories
 
@@ -35,7 +35,7 @@ Both releases (source + releases repo) must be created. The app will only detect
 - **NEVER install, uninstall, or run the MSI yourself** — only the user installs and tests on their machine
 - **NEVER run msiexec or any installer commands** — the build script copies the MSI to the user's Desktop; they handle it from there
 - **If Files.wxs is stale** (DLL count mismatch after .NET SDK update), the script auto-regenerates it
-- **No obfuscation** — this is open source
+- **No obfuscation** — source is publicly visible (freeware, not open-source)
 
 ## Version History
 

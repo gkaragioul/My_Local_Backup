@@ -157,11 +157,11 @@
                                         <TextBlock Text="Developer: George Karagioules" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,5"/>
                                         <TextBlock Text="Year: 2026" Margin="0,0,0,10" Foreground="{DynamicResource TextMutedBrush}"/>
                                         
-                                        <TextBlock Text="MIT License" FontWeight="Bold" FontSize="12" Foreground="{DynamicResource PrimaryBrush}" Margin="0,10,0,5"/>
+                                        <TextBlock Text="Freeware License" FontWeight="Bold" FontSize="12" Foreground="{DynamicResource PrimaryBrush}" Margin="0,10,0,5"/>
                                         <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextMutedBrush}">
-                                            Copyright © 2026 George Karagioules&#x0a;&#x0a;
-                                            Permission is hereby granted, free of charge, to any person obtaining a copy of this software, to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the software, subject to the following conditions:&#x0a;&#x0a;
-                                            The above copyright notice and this permission notice shall be included in all copies or substantial portions of the software.&#x0a;&#x0a;
+                                            Copyright © 2026 George Karagioules. All rights reserved.&#x0a;&#x0a;
+                                            This software is provided free of charge for personal and commercial use. You may download and use it at no cost.&#x0a;&#x0a;
+                                            You may NOT modify, reverse-engineer, redistribute, or sell this software or any portion of it without prior written permission from the author.&#x0a;&#x0a;
                                             THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. USE AS A SUPPLEMENT TO OTHER BACKUP STRATEGIES — THE DEVELOPER IS NOT LIABLE FOR DATA LOSS.
                                         </TextBlock>
                                     </StackPanel>
