@@ -8,7 +8,7 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>0.8.0</Version>
+    <Version>0.8.1</Version>
     <SignAssembly Condition="Exists('..\MyLocalBackup.snk')">true</SignAssembly>
     <AssemblyOriginatorKeyFile Condition="Exists('..\MyLocalBackup.snk')">..\MyLocalBackup.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>

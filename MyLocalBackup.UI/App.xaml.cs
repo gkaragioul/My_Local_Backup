@@ -158,8 +158,11 @@ namespace MyLocalBackup.UI
                 if (e.Args.Contains("--minimized", StringComparer.OrdinalIgnoreCase)
                     && ConfigManager.Config.MinimizeToTray)
                 {
-                    mainWindow.ShowInTaskbar = false;
+                    // Show the window briefly off-screen so the TaskbarIcon control
+                    // (tray icon) gets its native window created, then hide it.
                     mainWindow.WindowState = WindowState.Minimized;
+                    mainWindow.ShowInTaskbar = false;
+                    mainWindow.Show();
                     mainWindow.Hide();
                     Logger.Log("Started minimized to tray (system startup).");
                 }
