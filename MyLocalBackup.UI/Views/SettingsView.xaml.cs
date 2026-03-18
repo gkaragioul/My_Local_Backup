@@ -225,7 +225,7 @@ namespace MyLocalBackup.UI.Views
             SetLaunchAtStartup(_configManager.Config.LaunchAtStartup);
         }
 
-        private static void SetLaunchAtStartup(bool enable)
+        internal static void SetLaunchAtStartup(bool enable)
         {
             try
             {
@@ -239,7 +239,7 @@ namespace MyLocalBackup.UI.Views
                     var exePath = Environment.ProcessPath ?? System.IO.Path.Combine(
                         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
                         "MyLocalBackup", "MyLocalBackup.UI.exe");
-                    key.SetValue("MyLocalBackup", $"\"{exePath}\"");
+                    key.SetValue("MyLocalBackup", $"\"{exePath}\" --minimized");
                 }
                 else
                 {

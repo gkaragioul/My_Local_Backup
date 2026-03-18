@@ -136,6 +136,9 @@ namespace MyLocalBackup.UI
                 Scheduler.BackupCompleted += (s, data) => Logger.Log($"Backup completed. Success: {data.success}{(data.failedFiles?.Count > 0 ? $", {data.failedFiles.Count} file(s) failed" : "")}");
                 Scheduler.ProgressUpdated += (s, data) => { if ((int)data.percentage % 25 == 0) Logger.Log($"Progress: {data.task} - {(int)data.percentage}%"); };
 
+                // 3.5. Sync startup registry (keeps exe path current after updates)
+                Views.SettingsView.SetLaunchAtStartup(ConfigManager.Config.LaunchAtStartup);
+
                 // 4. Start Scheduler
                 Logger.Log("Starting background scheduler...");
 
@@ -150,7 +153,20 @@ namespace MyLocalBackup.UI
                 base.OnStartup(e);
                 var mainWindow = new MainWindow();
                 MainWindow = mainWindow;
-                mainWindow.Show();
+
+                // --minimized: start hidden in system tray (used by startup registry entry)
+                if (e.Args.Contains("--minimized", StringComparer.OrdinalIgnoreCase)
+                    && ConfigManager.Config.MinimizeToTray)
+                {
+                    mainWindow.ShowInTaskbar = false;
+                    mainWindow.WindowState = WindowState.Minimized;
+                    mainWindow.Hide();
+                    Logger.Log("Started minimized to tray (system startup).");
+                }
+                else
+                {
+                    mainWindow.Show();
+                }
             }
             catch (Exception ex)
             {
