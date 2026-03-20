@@ -428,6 +428,18 @@ namespace MyLocalBackup.UI.Views
             {
                 if (!_configManager.Config.SourceFolders.Any(f => string.Equals(f, dialog.SelectedPath, StringComparison.OrdinalIgnoreCase)))
                 {
+                    // Warn if user selected a root drive (e.g. H:\)
+                    if (Path.GetPathRoot(dialog.SelectedPath)?.TrimEnd('\\').Equals(dialog.SelectedPath.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase) == true)
+                    {
+                        var result = System.Windows.MessageBox.Show(
+                            "You selected an entire drive. This may include development folders (node_modules, bin, obj) and system files, which can make backups extremely slow.\n\nConsider adding specific subfolders instead.\n\nContinue anyway?",
+                            "Large Backup Warning",
+                            System.Windows.MessageBoxButton.YesNo,
+                            System.Windows.MessageBoxImage.Warning);
+                        if (result != System.Windows.MessageBoxResult.Yes)
+                            return;
+                    }
+
                     _configManager.Config.SourceFolders.Add(dialog.SelectedPath);
                     _configManager.SaveConfig();
                     RefreshLists();
