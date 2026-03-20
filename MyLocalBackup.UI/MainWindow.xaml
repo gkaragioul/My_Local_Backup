@@ -125,6 +125,7 @@
                         <!-- Navigation Tabs -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
                             <RadioButton x:Name="NavDashboard" IsChecked="True" Style="{StaticResource HeaderNavButtonStyle}" Content="Dashboard" Tag="&#xE80F;" Click="Nav_Click"/>
+                            <RadioButton x:Name="NavHistory" Style="{StaticResource HeaderNavButtonStyle}" Content="History" Tag="&#xE81C;" Click="Nav_Click"/>
                             <RadioButton x:Name="NavSettings" Style="{StaticResource HeaderNavButtonStyle}" Content="Settings" Tag="&#xE713;" Click="Nav_Click"/>
                         </StackPanel>
 

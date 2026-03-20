@@ -83,8 +83,6 @@
                     <StackPanel Grid.Column="2" VerticalAlignment="Center">
                         <!-- Idle state buttons -->
                         <StackPanel x:Name="PanelIdleActions" Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button x:Name="BtnViewHistory" Content="View History" Click="BtnViewHistory_Click" Margin="0,0,12,0"
-                                    Style="{StaticResource LinkButtonStyle}" Foreground="{DynamicResource PrimaryBrush}" Padding="5,0"/>
                             <Button x:Name="BtnBackupNow" Content="Back Up Now" Style="{StaticResource ModernButtonStyle}"
                                     Click="BtnBackupNow_Click"/>
                         </StackPanel>
@@ -92,8 +90,8 @@
                         <StackPanel x:Name="PanelRunningActions" Orientation="Horizontal" HorizontalAlignment="Right" Visibility="Collapsed">
                             <Button x:Name="BtnPause" Content="Pause" Click="BtnPause_Click" Margin="0,0,10,0"
                                     Style="{StaticResource OutlinedButtonStyle}"/>
-                            <Button x:Name="BtnSkipBackup" Content="Skip This Backup" Style="{StaticResource ModernButtonStyle}"
-                                    Click="BtnBackupNow_Click" Background="{DynamicResource ErrorBrush}"/>
+                            <Button x:Name="BtnSkipBackup" Content="Skip This Backup" Style="{StaticResource DangerButtonStyle}"
+                                    Click="BtnBackupNow_Click"/>
                         </StackPanel>
                     </StackPanel>
                 </Grid>

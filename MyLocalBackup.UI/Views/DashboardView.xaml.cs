@@ -321,13 +321,6 @@ namespace MyLocalBackup.UI.Views
             });
         }
 
-        private void BtnViewHistory_Click(object sender, RoutedEventArgs e)
-        {
-            var historyWin = new BackupHistoryWindow(_db, _configManager.Config);
-            historyWin.Owner = Window.GetWindow(this);
-            historyWin.ShowDialog();
-        }
-
         private void BtnViewLogs_Click(object sender, RoutedEventArgs e)
         {
             // Navigate to Settings and switch to the Failed Files tab

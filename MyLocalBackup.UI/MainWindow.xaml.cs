@@ -26,6 +26,10 @@ namespace MyLocalBackup.UI
 
             // Initialize Views
             _views["Dashboard"] = new DashboardView();
+            var historyView = new Views.HistoryView();
+            if (App.DatabaseManager != null && App.ConfigManager?.Config != null)
+                historyView.Initialize(App.DatabaseManager, App.ConfigManager.Config);
+            _views["History"] = historyView;
             _views["Settings"] = new SettingsView();
 
             // Set Initial View
@@ -263,9 +267,10 @@ namespace MyLocalBackup.UI
         {
             if (_views.TryGetValue(viewName, out var view))
             {
+                if (view is Views.HistoryView hv) hv.Refresh();
                 ContentArea.Content = view;
-                // Update RadioButton checked state
                 if (viewName == "Dashboard") NavDashboard.IsChecked = true;
+                else if (viewName == "History") NavHistory.IsChecked = true;
                 else if (viewName == "Settings") NavSettings.IsChecked = true;
             }
         }
@@ -282,6 +287,7 @@ namespace MyLocalBackup.UI
             {
                 if (_views.TryGetValue(viewName, out var view))
                 {
+                    if (view is Views.HistoryView hv) hv.Refresh();
                     ContentArea.Content = view;
                 }
             }
