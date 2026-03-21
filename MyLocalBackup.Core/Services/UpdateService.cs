@@ -269,7 +269,7 @@ namespace MyLocalBackup.Core.Services
             try
             {
                 var currentVer = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "unknown";
-                var downloadUrl = $"https://github.com/{RepoOwner}/{RepoName}/releases/download/v{currentVer}/MyLocalBackupSetup.msi";
+                var downloadUrl = $"https://github.com/{RepoOwner}/{RepoName}/releases/download/v{currentVer}/MyLocalBackupSetup.exe";
                 File.WriteAllText(PreviousVersionFile, $"{currentVer}|{downloadUrl}");
             }
             catch (Exception ex) { Logger.Log($"Warning: Could not save previous version info: {ex.Message}"); }
