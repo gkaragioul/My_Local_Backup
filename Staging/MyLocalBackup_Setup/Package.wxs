@@ -14,7 +14,7 @@
     <Property Id="MsiLogging" Value="voicewarmupx" />
     <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
-                                                                                <Feature Id="MainFeature" Title="MyLocalBackup" Level="1">
+                                                                                        <Feature Id="MainFeature" Title="MyLocalBackup" Level="1">
       <ComponentGroupRef Id="AppFiles" />
       <ComponentGroupRef Id="AppFiles_cs" />
       <ComponentGroupRef Id="AppFiles_de" />
@@ -52,9 +52,7 @@
                   Name="MyLocalBackup"
                   Description="MyLocalBackup"
                   Target="[INSTALLFOLDER]MyLocalBackup.UI.exe"
-                  WorkingDirectory="INSTALLFOLDER"
-                  Icon="AppIcon"
-                  IconIndex="0" />
+                  WorkingDirectory="INSTALLFOLDER" />
         <RemoveFolder Id="RemoveApplicationProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
         <RegistryValue Root="HKLM" Key="Software\MyLocalBackup" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
       </Component>
@@ -64,14 +62,14 @@
                   Name="MyLocalBackup"
                   Description="MyLocalBackup"
                   Target="[INSTALLFOLDER]MyLocalBackup.UI.exe"
-                  WorkingDirectory="INSTALLFOLDER"
-                  Icon="AppIcon"
-                  IconIndex="0" />
+                  WorkingDirectory="INSTALLFOLDER" />
         <RegistryValue Root="HKLM" Key="Software\MyLocalBackup" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </ComponentGroup>
   </Fragment>
 </Wix>
+
+
 
 
 
