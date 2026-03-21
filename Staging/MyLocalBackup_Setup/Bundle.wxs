@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
+  <Bundle Name="MyLocalBackup"
+          Version="$(var.Version)"
+          Manufacturer="MyLocalBackup"
+          UpgradeCode="F5A8B3C2-7D1E-4A9F-B6C8-2E4F1A3D5B7C"
+          IconSourceFile="app.ico">
+
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication
+        LicenseFile="License.rtf"
+        Theme="rtfLicense" />
+    </BootstrapperApplication>
+
+    <Chain>
+      <MsiPackage Id="MainMsi" SourceFile="MyLocalBackupSetup.msi" />
+    </Chain>
+  </Bundle>
+</Wix>

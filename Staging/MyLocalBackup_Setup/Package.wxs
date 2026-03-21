@@ -52,7 +52,9 @@
                   Name="MyLocalBackup"
                   Description="MyLocalBackup"
                   Target="[INSTALLFOLDER]MyLocalBackup.UI.exe"
-                  WorkingDirectory="INSTALLFOLDER" />
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="AppIcon"
+                  IconIndex="0" />
         <RemoveFolder Id="RemoveApplicationProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
         <RegistryValue Root="HKLM" Key="Software\MyLocalBackup" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
       </Component>
@@ -62,7 +64,9 @@
                   Name="MyLocalBackup"
                   Description="MyLocalBackup"
                   Target="[INSTALLFOLDER]MyLocalBackup.UI.exe"
-                  WorkingDirectory="INSTALLFOLDER" />
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="AppIcon"
+                  IconIndex="0" />
         <RegistryValue Root="HKLM" Key="Software\MyLocalBackup" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </ComponentGroup>

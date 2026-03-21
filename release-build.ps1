@@ -21,7 +21,7 @@ $stagingBase = "$root\Staging\MLB_Build"
 Write-Host "=== MyLocalBackup Release Build v$Version ===" -ForegroundColor Cyan
 
 # Step 1: Publish
-Write-Host "`n[1/4] Publishing..." -ForegroundColor Yellow
+Write-Host "`n[1/5] Publishing..." -ForegroundColor Yellow
 if (Test-Path $publishDir) { Remove-Item $publishDir -Recurse -Force }
 dotnet publish "$root/MyLocalBackup.UI/MyLocalBackup.UI.csproj" -c Release -r win-x64 --self-contained -p:PublishReadyToRun=true -o $publishDir | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Publish failed" }
@@ -36,10 +36,10 @@ Get-ChildItem -Path $publishDir -Filter "*.pdb" -Recurse | Remove-Item
 Write-Host "  PDB files stripped from publish output" -ForegroundColor Gray
 
 # Step 2: Stage and build MSI
-Write-Host "[2/4] Building MSI..." -ForegroundColor Yellow
+Write-Host "[2/5] Building MSI..." -ForegroundColor Yellow
 
-# Clean up old MSI/WixPdb/cab artifacts from previous builds
-Get-ChildItem $msiDir -Include "*.msi","*.wixpdb","*.cab" -File | ForEach-Object {
+# Clean up old build artifacts from previous builds
+Get-ChildItem $msiDir -Include "*.msi","*.exe","*.wixpdb","*.cab" -File | ForEach-Object {
     Remove-Item $_.FullName -Force
     Write-Host "  Cleaned old artifact: $($_.Name)" -ForegroundColor Gray
 }
@@ -134,16 +134,32 @@ if (-not (Test-Path "$msiDir\MyLocalBackupSetup.msi")) {
 # Clean up staging directory
 if (Test-Path $stagingBase) { Remove-Item $stagingBase -Recurse -Force }
 
-# Step 3: Compute MSI hash
-Write-Host "[3/4] Computing MSI hash..." -ForegroundColor Yellow
-$msiHash = (Get-FileHash "$msiDir\MyLocalBackupSetup.msi" -Algorithm SHA256).Hash.ToLower()
+# Step 3: Build Burn bundle EXE (wraps MSI with custom app icon)
+Write-Host "[3/5] Building setup EXE..." -ForegroundColor Yellow
+# WixToolset.Bal.wixext ships its DLL as WixToolset.BootstrapperApplications.wixext.dll
+$balExtDll = Join-Path $env:USERPROFILE ".wix\extensions\WixToolset.Bal.wixext\5.0.2\wixext5\WixToolset.BootstrapperApplications.wixext.dll"
+if (-not (Test-Path $balExtDll)) {
+    throw "WiX Bal extension not found. Install it with: wix extension add -g WixToolset.Bal.wixext/5.0.2"
+}
+Push-Location $msiDir
+wix build Bundle.wxs -d "Version=$Version" -ext $balExtDll -o MyLocalBackupSetup.exe
+if ($LASTEXITCODE -ne 0) { Pop-Location; throw "Bundle EXE build failed" }
+Pop-Location
 
-# Step 4: Copy to Desktop
-Write-Host "[4/4] Copying MSI to Desktop..." -ForegroundColor Yellow
-Copy-Item "$msiDir\MyLocalBackupSetup.msi" "$env:USERPROFILE\Desktop\MyLocalBackupSetup_v$Version.msi" -Force
+if (-not (Test-Path "$msiDir\MyLocalBackupSetup.exe")) {
+    throw "Bundle build reported success but MyLocalBackupSetup.exe was not found"
+}
+
+# Step 4: Compute EXE hash
+Write-Host "[4/5] Computing EXE hash..." -ForegroundColor Yellow
+$exeHash = (Get-FileHash "$msiDir\MyLocalBackupSetup.exe" -Algorithm SHA256).Hash.ToLower()
+
+# Step 5: Copy to Desktop
+Write-Host "[5/5] Copying EXE to Desktop..." -ForegroundColor Yellow
+Copy-Item "$msiDir\MyLocalBackupSetup.exe" "$env:USERPROFILE\Desktop\MyLocalBackupSetup_v$Version.exe" -Force
 
 Write-Host "`n=== Build Complete ===" -ForegroundColor Green
-Write-Host "MSI: $env:USERPROFILE\Desktop\MyLocalBackupSetup_v$Version.msi"
-Write-Host "MSI SHA256: $msiHash"
+Write-Host "EXE: $env:USERPROFILE\Desktop\MyLocalBackupSetup_v$Version.exe"
+Write-Host "EXE SHA256: $exeHash"
 Write-Host "`nInclude this in your GitHub release notes:"
-Write-Host "SHA256: $msiHash" -ForegroundColor Cyan
+Write-Host "SHA256: $exeHash" -ForegroundColor Cyan

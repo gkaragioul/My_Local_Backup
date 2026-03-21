@@ -411,9 +411,37 @@ namespace MyLocalBackup.Core.Services
                 }
                 else
                 {
-                    started = Process.Start(new ProcessStartInfo(installerPath)
+                    // EXE installer (Burn bundle) — same pattern as MSI: wait, then relaunch
+                    var logPath = Path.Combine(Path.GetTempPath(), "mlb_install.log");
+                    var appExePath = Environment.ProcessPath ?? Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                        "MyLocalBackup",
+                        "MyLocalBackup.UI.exe"
+                    );
+                    var helperScript = Path.Combine(Path.GetTempPath(), $"mlb_relaunch_{Guid.NewGuid():N}.ps1");
+
+                    var scriptLines = new string[]
                     {
-                        UseShellExecute = true
+                        $"$installer = '{installerPath.Replace("'", "''")}'",
+                        $"$log = '{logPath.Replace("'", "''")}'",
+                        $"$app = '{appExePath.Replace("'", "''")}'",
+                        "Start-Sleep -Seconds 2",
+                        "$proc = Start-Process $installer -ArgumentList \"/passive /norestart /log `\"$log`\"\" -Wait -PassThru",
+                        "if ($proc.ExitCode -ne 0) {",
+                        "  Add-Content $log \"Installer exited with code $($proc.ExitCode)\"",
+                        "}",
+                        "if (Test-Path $app) { Start-Process $app }",
+                        "Remove-Item $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue"
+                    };
+
+                    File.WriteAllLines(helperScript, scriptLines);
+
+                    started = Process.Start(new ProcessStartInfo
+                    {
+                        FileName = "powershell.exe",
+                        Arguments = $"-ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File \"{helperScript}\"",
+                        UseShellExecute = true,
+                        WindowStyle = ProcessWindowStyle.Hidden
                     });
                 }
 
