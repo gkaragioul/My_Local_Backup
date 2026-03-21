@@ -26,6 +26,8 @@ When creating a new release:
    - `gh release create vX.Y.Z --repo georgekgr12/MyLocalBackup ...`
    - `gh release create vX.Y.Z --repo georgekgr12/MyLocalBackup-releases ... Staging/MyLocalBackup_Setup/MyLocalBackupSetup.msi#MyLocalBackupSetup.msi`
 5. **Include SHA256 in release notes**: Format: `SHA256: <hash>` (the update checker parses this)
+6. **Update README.md**: Update the version in the heading (`# MyLocalBackup (vX.Y.Z)`) and ensure the feature list, tech stack, and descriptions reflect any recent changes. Commit and push the README update.
+7. **Update repo descriptions** if the release includes significant new functionality: update the GitHub repo description/about via `gh repo edit` if appropriate.
 
 Both releases (source + releases repo) must be created. The app will only detect updates from the releases repo.
 
@@ -39,7 +41,7 @@ Both releases (source + releases repo) must be created. The app will only detect
 
 ## Version History
 
-Versions follow `0.7.X` pattern. Check last commit message or `.csproj` for current version.
+Versions follow `0.8.X` pattern. Check last commit message or `.csproj` for current version.
 
 ## Build Commands
 

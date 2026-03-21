@@ -1,4 +1,4 @@
-# MyLocalBackup (v0.7.1)
+# MyLocalBackup (v0.8.4)
 
 A free versioned local backup tool for Windows. Uses NTFS hard links for space-efficient incremental backups stored as full snapshots.
 
@@ -19,7 +19,7 @@ A free versioned local backup tool for Windows. Uses NTFS hard links for space-e
 - **Catch-up logic**: If a scheduled backup was missed (app closed), the next run fires soon rather than waiting a full interval.
 
 ### UI
-- **Dashboard**: Live status, countdown to next backup, progress bar with per-file detail for large files, skipped-files tab.
+- **Dashboard**: Live status, countdown to next backup, progress bar with per-file detail for large files, skipped-files tab (persisted across restarts).
 - **Backup History**: Browse, open, or delete past snapshots.
 - **System tray**: Run, pause, resume, or skip backups from the tray context menu. Disable automatic backups directly from tray.
 - **Notifications**: Toast-style notification when a background backup starts (configurable).
@@ -33,7 +33,7 @@ A free versioned local backup tool for Windows. Uses NTFS hard links for space-e
 
 - **Framework**: .NET 9 / WPF (Windows)
 - **Database**: SQLite via `Microsoft.Data.Sqlite` (WAL mode on local drives, exclusive mode on removable)
-- **Installer**: WiX v4 MSI (per-user install to `%LocalAppData%\MyLocalBackup`)
+- **Installer**: WiX v5 MSI (per-machine install to `%ProgramFiles%\MyLocalBackup`)
 - **Self-contained**: Bundles the .NET runtime — no separate .NET install required
 
 ## Requirements
