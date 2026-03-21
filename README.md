@@ -1,4 +1,4 @@
-# MyLocalBackup (v0.8.4)
+# MyLocalBackup (v0.8.5)
 
 A free versioned local backup tool for Windows. Uses NTFS hard links for space-efficient incremental backups stored as full snapshots.
 
@@ -9,6 +9,7 @@ A free versioned local backup tool for Windows. Uses NTFS hard links for space-e
 - **Rename/move detection**: Files moved or renamed are matched via size + last-write-time, so they're hard-linked rather than re-copied.
 - **Two-phase deletion**: Snapshots are marked `Deleting` before removal so a crash mid-delete leaves no orphans (cleaned up on next launch).
 - **Retention management**: Automatically prunes old snapshots when disk space is low or count limits are reached. Pinned snapshots are never deleted.
+- **Backup resume**: If a backup is interrupted (app close, update, crash), the next run resumes from where it left off — files already copied are skipped.
 - **Flush retry with bounded retries**: Batch database inserts retry up to 3 times on failure before dropping entries, preventing unbounded re-queuing.
 
 ### Scheduling

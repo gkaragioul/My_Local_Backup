@@ -30,6 +30,9 @@ namespace MyLocalBackup.Core.Engine
         private Dictionary<(long size, string lwt), (int rpId, string relativePath)>? _dedupIndex;
         private Dictionary<int, RestorePoint>? _restorePointCache;
 
+        // Resume support: tracks DB-relative paths already present in a resumed snapshot
+        private HashSet<string>? _resumedFilePaths;
+
         // Progress tracking - file-count based for accurate progress
         private long _totalFileCount;
         private long _processedFileCount;
@@ -218,30 +221,67 @@ namespace MyLocalBackup.Core.Engine
 
             try
             {
-                _cancellationToken.ThrowIfCancellationRequested();
-                onProgress?.Invoke(2, "Initializing live backup...");
-                var timestampUtc = DateTime.UtcNow;
-                var snapshotName = timestampUtc.ToLocalTime().ToString("yyyy-MM-dd HH.mm.ss");
-                var finalSnapshotPath = Path.Combine(snapshotsPath, snapshotName);
-
-                // Create the folder immediately for live feedback
-                Directory.CreateDirectory(finalSnapshotPath);
-
                 // Detect if destination was formatted: check if any previous snapshots still exist on disk
                 _cancellationToken.ThrowIfCancellationRequested();
-                onProgress?.Invoke(3, "Checking destination state...");
-                CleanupStaleRestorePoints(masterCentralConn, snapshotsPath);
+                onProgress?.Invoke(2, "Checking destination state...");
+                var resumableRp = CleanupStaleRestorePoints(masterCentralConn, snapshotsPath);
 
-                onProgress?.Invoke(4, "Creating backup records...");
-                rpCentral = new RestorePoint
+                string finalSnapshotPath;
+                if (resumableRp != null)
                 {
-                    Timestamp = timestampUtc,
-                    Path = finalSnapshotPath,
-                    Status = BackupStatus.InProgress,
-                    TargetDestination = _destinationRoot
-                };
+                    // Resume the interrupted backup
+                    rpCentral = resumableRp;
+                    finalSnapshotPath = resumableRp.Path;
+                    _centralDb.UpdateRestorePointStatus(rpCentral.Id, BackupStatus.InProgress, masterCentralConn);
 
-                _centralDb.AddRestorePoint(rpCentral, masterCentralConn);
+                    onProgress?.Invoke(3, "Resuming interrupted backup...");
+                    long alreadyDone = BuildResumeIndex(finalSnapshotPath, snapshotsPath);
+                    Interlocked.Add(ref _processedFileCount, alreadyDone);
+                    Logger.Log($"Resuming backup at {finalSnapshotPath}: {alreadyDone} files already present, {Interlocked.Read(ref _totalFileCount)} total.");
+
+                    // Clear old file entries from DB — they'll be re-added as we walk directories
+                    // This ensures the DB is consistent with what's actually on disk
+                    onProgress?.Invoke(4, "Preparing resume...");
+                    try
+                    {
+                        using var clearCmd = masterCentralConn.CreateCommand();
+                        clearCmd.CommandText = "DELETE FROM FileEntries WHERE RestorePointId = $rpId";
+                        clearCmd.Parameters.AddWithValue("$rpId", rpCentral.Id);
+                        clearCmd.ExecuteNonQuery();
+
+                        // Also clear old failed files — they'll be re-recorded if errors recur
+                        using var clearFailedCmd = masterCentralConn.CreateCommand();
+                        clearFailedCmd.CommandText = "DELETE FROM FailedFiles WHERE RestorePointId = $rpId";
+                        clearFailedCmd.Parameters.AddWithValue("$rpId", rpCentral.Id);
+                        clearFailedCmd.ExecuteNonQuery();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Log($"Warning: Could not clear old entries for resume: {ex.Message}");
+                    }
+                }
+                else
+                {
+                    // Fresh backup
+                    _cancellationToken.ThrowIfCancellationRequested();
+                    onProgress?.Invoke(3, "Initializing live backup...");
+                    var timestampUtc = DateTime.UtcNow;
+                    var snapshotName = timestampUtc.ToLocalTime().ToString("yyyy-MM-dd HH.mm.ss");
+                    finalSnapshotPath = Path.Combine(snapshotsPath, snapshotName);
+
+                    Directory.CreateDirectory(finalSnapshotPath);
+
+                    onProgress?.Invoke(4, "Creating backup records...");
+                    rpCentral = new RestorePoint
+                    {
+                        Timestamp = timestampUtc,
+                        Path = finalSnapshotPath,
+                        Status = BackupStatus.InProgress,
+                        TargetDestination = _destinationRoot
+                    };
+
+                    _centralDb.AddRestorePoint(rpCentral, masterCentralConn);
+                }
 
                 _cancellationToken.ThrowIfCancellationRequested();
                 onProgress?.Invoke(5, "Analyzing previous snapshots...");
@@ -440,14 +480,20 @@ namespace MyLocalBackup.Core.Engine
             }, CancellationToken.None); // Don't tie to backup token — let it keep running
         }
 
-        private void CleanupStaleRestorePoints(SqliteConnection centralConn, string snapshotsPath)
+        /// <summary>
+        /// Returns the most recent interrupted snapshot that can be resumed, or null if none.
+        /// All other partial snapshots are cleaned up as before.
+        /// </summary>
+        private RestorePoint? CleanupStaleRestorePoints(SqliteConnection centralConn, string snapshotsPath)
         {
+            RestorePoint? resumable = null;
             try
             {
                 // Clean up any Interrupted/InProgress records left by previous cancellations or crashes
                 var partialSnapshots = _centralDb.GetRestorePoints(centralConn)
                     .Where(x => x.TargetDestination == _destinationRoot &&
                                 (x.Status == BackupStatus.InProgress || x.Status == BackupStatus.Interrupted))
+                    .OrderByDescending(x => x.Timestamp)
                     .ToList();
 
                 foreach (var partial in partialSnapshots)
@@ -456,6 +502,14 @@ namespace MyLocalBackup.Core.Engine
                     try
                     {
                         var folderName = Path.GetFileName(partial.Path);
+
+                        // Try to resume the most recent interrupted snapshot if its folder still exists
+                        if (resumable == null && partial.Status == BackupStatus.Interrupted && Directory.Exists(partial.Path))
+                        {
+                            resumable = partial;
+                            Logger.Log($"Found resumable interrupted snapshot: {folderName}");
+                            continue;
+                        }
 
                         if (Directory.Exists(partial.Path))
                         {
@@ -512,7 +566,7 @@ namespace MyLocalBackup.Core.Engine
                     .Where(x => x.TargetDestination == _destinationRoot && (x.Status == BackupStatus.Completed || x.Status == BackupStatus.CompletedWithErrors))
                     .ToList();
 
-                if (existingSnapshots.Count == 0) return;
+                if (existingSnapshots.Count == 0) return resumable;
 
                 // Check if any of the recorded snapshots actually exist on disk
                 var staleSnapshots = existingSnapshots.Where(rp => !Directory.Exists(rp.Path)).ToList();
@@ -546,6 +600,46 @@ namespace MyLocalBackup.Core.Engine
             {
                 Logger.Log($"Warning: Error during stale record cleanup: {ex}");
             }
+            return resumable;
+        }
+
+        /// <summary>
+        /// Counts files already present in a resumed snapshot folder to seed the processed count
+        /// and builds a set of DB-relative paths for skip detection during ProcessDirectory.
+        /// </summary>
+        private long BuildResumeIndex(string snapshotPath, string snapshotsPath)
+        {
+            long count = 0;
+            _resumedFilePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var sourceFolder in _config.SourceFolders)
+            {
+                if (!Directory.Exists(sourceFolder)) continue;
+
+                var sourceFolderName = new DirectoryInfo(sourceFolder).Name;
+                if (string.IsNullOrEmpty(sourceFolderName) || sourceFolderName.Contains(':'))
+                    sourceFolderName = sourceFolder.Replace(":", "").Replace("\\", "_").Replace("/", "_").Trim('_');
+
+                var targetSourceRoot = Path.Combine(snapshotPath, sourceFolderName);
+                if (!Directory.Exists(targetSourceRoot)) continue;
+
+                try
+                {
+                    foreach (var file in Directory.EnumerateFiles(targetSourceRoot, "*", SearchOption.AllDirectories))
+                    {
+                        // Build the DB-relative path: sourceFolderName\relative\path
+                        var relativeToSnapshot = Path.GetRelativePath(snapshotPath, file);
+                        _resumedFilePaths.Add(relativeToSnapshot);
+                        count++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Log($"Warning: Error scanning resumed snapshot folder {targetSourceRoot}: {ex.Message}");
+                }
+            }
+
+            return count;
         }
 
         /// <summary>
@@ -788,6 +882,35 @@ namespace MyLocalBackup.Core.Engine
                     }
                     var relativePath = Path.GetRelativePath(sourceRoot, sourceFilePath);
                     var dbRelativePath = Path.Combine(sourceRootName, relativePath);
+
+                    // Resume skip: if this file already exists in the resumed snapshot with matching metadata, skip copy
+                    if (_resumedFilePaths != null && _resumedFilePaths.Contains(dbRelativePath) && File.Exists(targetFilePath))
+                    {
+                        try
+                        {
+                            var existingInfo = new FileInfo(targetFilePath);
+                            if (existingInfo.Length == fileInfo.Length && existingInfo.LastWriteTimeUtc == fileInfo.LastWriteTimeUtc)
+                            {
+                                // File already backed up in the interrupted run — just record in DB
+                                var resumeEntry = new FileEntry
+                                {
+                                    RestorePointId = rpIdCentral,
+                                    RelativePath = dbRelativePath,
+                                    IsDirectory = false,
+                                    Size = fileInfo.Length,
+                                    LastWriteTime = fileInfo.LastWriteTimeUtc,
+                                    Attributes = (uint)fileInfo.Attributes
+                                };
+                                AddFileEntryBatched(resumeEntry, centralConn);
+                                // Don't increment _processedFileCount — already counted in BuildResumeIndex
+                                continue;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Log($"Warning: Resume check failed for {fileName}, will re-process: {ex.Message}");
+                        }
+                    }
 
                     bool linked = false;
 

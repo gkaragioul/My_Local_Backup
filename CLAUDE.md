@@ -20,20 +20,18 @@ When creating a new release:
 2. **Run the release build script**: `powershell -ExecutionPolicy Bypass -File release-build.ps1 -Version X.Y.Z`
    - This handles: publish, regenerate Files.wxs, MSI build, copy to Desktop
    - The script outputs the MSI SHA256 hash — include it in the GitHub release notes
-3. **User tests the MSI** from their Desktop before any GitHub release
-4. **Only after user confirms it works**, commit and push:
+3. **Commit and push**:
    - `git add` changed files, `git commit`, `git push origin main`
    - `gh release create vX.Y.Z --repo georgekgr12/MyLocalBackup ...`
    - `gh release create vX.Y.Z --repo georgekgr12/MyLocalBackup-releases ... Staging/MyLocalBackup_Setup/MyLocalBackupSetup.msi#MyLocalBackupSetup.msi`
-5. **Include SHA256 in release notes**: Format: `SHA256: <hash>` (the update checker parses this)
-6. **Update README.md**: Update the version in the heading (`# MyLocalBackup (vX.Y.Z)`) and ensure the feature list, tech stack, and descriptions reflect any recent changes. Commit and push the README update.
-7. **Update repo descriptions** if the release includes significant new functionality: update the GitHub repo description/about via `gh repo edit` if appropriate.
+4. **Include SHA256 in release notes**: Format: `SHA256: <hash>` (the update checker parses this)
+5. **Update README.md**: Update the version in the heading (`# MyLocalBackup (vX.Y.Z)`) and ensure the feature list, tech stack, and descriptions reflect any recent changes. Commit and push the README update.
+6. **Update repo descriptions** if the release includes significant new functionality: update the GitHub repo description/about via `gh repo edit` if appropriate.
 
 Both releases (source + releases repo) must be created. The app will only detect updates from the releases repo.
 
 ### Critical Rules
 
-- **NEVER push to GitHub before user tests the MSI on their machine**
 - **NEVER install, uninstall, or run the MSI yourself** — only the user installs and tests on their machine
 - **NEVER run msiexec or any installer commands** — the build script copies the MSI to the user's Desktop; they handle it from there
 - **If Files.wxs is stale** (DLL count mismatch after .NET SDK update), the script auto-regenerates it
