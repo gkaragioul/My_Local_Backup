@@ -152,6 +152,15 @@ namespace MyLocalBackup.Core.Data
                         CREATE INDEX IF NOT EXISTS idx_file_dedup ON FileEntries(Size, LastWriteTime);
                         CREATE INDEX IF NOT EXISTS idx_restore_destination ON RestorePoints(TargetDestination);
                         CREATE INDEX IF NOT EXISTS idx_restore_status_dest ON RestorePoints(Status, TargetDestination);
+
+                        CREATE TABLE IF NOT EXISTS FailedFiles (
+                            Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            RestorePointId INTEGER NOT NULL,
+                            FilePath TEXT NOT NULL,
+                            FOREIGN KEY(RestorePointId) REFERENCES RestorePoints(Id)
+                        );
+
+                        CREATE INDEX IF NOT EXISTS idx_failedfiles_rpid ON FailedFiles(RestorePointId);
                     ";
                     setupCmd.ExecuteNonQuery();
                 }
@@ -176,10 +185,10 @@ namespace MyLocalBackup.Core.Data
         // Only these identifiers are valid for schema migration — prevents SQL injection in DDL statements
         private static readonly HashSet<string> AllowedIdentifiers = new(StringComparer.OrdinalIgnoreCase)
         {
-            "RestorePoints", "FileEntries",
+            "RestorePoints", "FileEntries", "FailedFiles",
             "Attributes", "IsPinned", "TargetDestination",
             "Id", "Timestamp", "Path", "Status", "RestorePointId",
-            "RelativePath", "IsDirectory", "Size", "LastWriteTime"
+            "RelativePath", "IsDirectory", "Size", "LastWriteTime", "FilePath"
         };
 
         private static void ValidateIdentifier(string name)
@@ -509,6 +518,79 @@ namespace MyLocalBackup.Core.Data
             return results;
         }
 
+        public void SaveFailedFiles(int restorePointId, IReadOnlyList<string> failedFiles, SqliteConnection? existingConnection = null)
+        {
+            if (failedFiles.Count == 0) return;
+
+            bool ownsConnection = existingConnection == null;
+            var connection = existingConnection ?? OpenAdHocConnection();
+
+            try
+            {
+                using var transaction = connection.BeginTransaction();
+                try
+                {
+                    // Clear any existing failed files for this restore point
+                    using var deleteCmd = connection.CreateCommand();
+                    deleteCmd.Transaction = transaction;
+                    deleteCmd.CommandText = "DELETE FROM FailedFiles WHERE RestorePointId = $rpId";
+                    deleteCmd.Parameters.AddWithValue("$rpId", restorePointId);
+                    deleteCmd.ExecuteNonQuery();
+
+                    using var insertCmd = connection.CreateCommand();
+                    insertCmd.Transaction = transaction;
+                    insertCmd.CommandText = "INSERT INTO FailedFiles (RestorePointId, FilePath) VALUES ($rpId, $path)";
+                    var pRpId = insertCmd.Parameters.Add("$rpId", SqliteType.Integer);
+                    var pPath = insertCmd.Parameters.Add("$path", SqliteType.Text);
+
+                    // Cap at 500 to match UI limit
+                    var limit = Math.Min(failedFiles.Count, 500);
+                    for (int i = 0; i < limit; i++)
+                    {
+                        pRpId.Value = restorePointId;
+                        pPath.Value = failedFiles[i];
+                        insertCmd.ExecuteNonQuery();
+                    }
+
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+            finally
+            {
+                if (ownsConnection) connection.Dispose();
+            }
+        }
+
+        public List<string> GetFailedFiles(int restorePointId, SqliteConnection? existingConnection = null)
+        {
+            var results = new List<string>();
+            bool ownsConnection = existingConnection == null;
+            var connection = existingConnection ?? OpenAdHocConnection();
+
+            try
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = "SELECT FilePath FROM FailedFiles WHERE RestorePointId = $rpId";
+                command.Parameters.AddWithValue("$rpId", restorePointId);
+
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    results.Add(reader.GetString(0));
+                }
+            }
+            finally
+            {
+                if (ownsConnection) connection.Dispose();
+            }
+            return results;
+        }
+
         public void DeleteRestorePoint(int id, SqliteConnection? existingConnection = null)
         {
             var connection = existingConnection ?? OpenAdHocConnection();
@@ -518,6 +600,12 @@ namespace MyLocalBackup.Core.Data
                 using var transaction = connection.BeginTransaction();
                 try
                 {
+                    using var cmdFailed = connection.CreateCommand();
+                    cmdFailed.Transaction = transaction;
+                    cmdFailed.CommandText = "DELETE FROM FailedFiles WHERE RestorePointId = $id";
+                    cmdFailed.Parameters.AddWithValue("$id", id);
+                    cmdFailed.ExecuteNonQuery();
+
                     using var cmdFiles = connection.CreateCommand();
                     cmdFiles.Transaction = transaction;
                     cmdFiles.CommandText = "DELETE FROM FileEntries WHERE RestorePointId = $id";

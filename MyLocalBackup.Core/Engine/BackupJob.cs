@@ -339,6 +339,19 @@ namespace MyLocalBackup.Core.Engine
                 var finalStatus = _hasErrors ? BackupStatus.CompletedWithErrors : BackupStatus.Completed;
                 _centralDb.UpdateRestorePointStatus(rpCentral.Id, finalStatus, masterCentralConn);
 
+                // Persist failed files to DB so they survive app restarts
+                if (_hasErrors)
+                {
+                    try
+                    {
+                        _centralDb.SaveFailedFiles(rpCentral.Id, FailedFiles, masterCentralConn);
+                    }
+                    catch (Exception ffEx)
+                    {
+                        Logger.Log($"Warning: Could not persist failed files list: {ffEx.Message}");
+                    }
+                }
+
                 string completionMsg = _hasErrors
                     ? $"Backup completed with {errorCount} error(s). {successCount} files OK."
                     : "Backup successful.";

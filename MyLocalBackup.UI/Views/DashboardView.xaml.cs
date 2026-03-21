@@ -136,6 +136,17 @@ namespace MyLocalBackup.UI.Views
                         // Show link to view logs for failed files
                         BtnViewLogs.Visibility = Visibility.Visible;
                         TxtLogSeparator.Visibility = Visibility.Visible;
+                        // Load persisted failed files from DB so they survive app restarts
+                        try
+                        {
+                            var failedFiles = _db.GetFailedFiles(lastRp.Id);
+                            if (failedFiles.Count > 0)
+                                UILogger.SetFailedFiles(failedFiles);
+                        }
+                        catch (Exception ex)
+                        {
+                            Core.Logger.Log($"Warning: Could not load failed files: {ex.Message}");
+                        }
                         break;
                     case Core.Models.BackupStatus.Failed:
                         TxtStatus.Text = "Last Backup Failed";
