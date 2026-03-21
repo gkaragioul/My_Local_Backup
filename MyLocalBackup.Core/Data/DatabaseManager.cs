@@ -504,9 +504,11 @@ namespace MyLocalBackup.Core.Data
                         RestorePointId = reader.GetInt32(1),
                         RelativePath = reader.GetString(2),
                         IsDirectory = reader.GetInt32(3) == 1,
-                        Size = reader.GetInt64(4),
-                        LastWriteTime = DateTime.Parse(reader.GetString(5), null, System.Globalization.DateTimeStyles.RoundtripKind),
-                        Attributes = (uint)(reader.GetInt64(6) & 0xFFFFFFFF)
+                        Size = reader.IsDBNull(4) ? 0 : reader.GetInt64(4),
+                        LastWriteTime = reader.IsDBNull(5)
+                            ? DateTime.MinValue
+                            : DateTime.Parse(reader.GetString(5), null, System.Globalization.DateTimeStyles.RoundtripKind),
+                        Attributes = reader.IsDBNull(6) ? 0 : (uint)(reader.GetInt64(6) & 0xFFFFFFFF)
                     });
                 }
             }
