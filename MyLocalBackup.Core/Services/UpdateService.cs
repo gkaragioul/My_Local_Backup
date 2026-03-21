@@ -28,8 +28,12 @@ namespace MyLocalBackup.Core.Services
         private static readonly string PendingUpdateFile = Path.Combine(AppDataDir, "pending_update.txt");
         private static readonly string PreviousVersionFile = Path.Combine(AppDataDir, "previous_version.txt");
 
+        private static readonly string ETagFile = Path.Combine(AppDataDir, "github_etag.txt");
+
         private readonly HttpClient _httpClient;
         private readonly CancellationTokenSource _cts = new();
+        private string? _cachedETag;
+        private string? _cachedResponseBody;
         private bool _disposed;
 
         public UpdateService()
@@ -37,6 +41,7 @@ namespace MyLocalBackup.Core.Services
             _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
             var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.7.0";
             _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MyLocalBackup", version));
+            LoadCachedETag();
             CleanupOrphanedTempScripts();
         }
 
@@ -78,14 +83,65 @@ namespace MyLocalBackup.Core.Services
                  > new Version(current.Major, current.Minor, current.Build);
         }
 
+        private void LoadCachedETag()
+        {
+            try
+            {
+                if (File.Exists(ETagFile))
+                {
+                    var lines = File.ReadAllLines(ETagFile);
+                    if (lines.Length >= 2)
+                    {
+                        _cachedETag = lines[0];
+                        _cachedResponseBody = string.Join('\n', lines.Skip(1));
+                    }
+                }
+            }
+            catch { /* Non-critical — will just do a full request */ }
+        }
+
+        private void SaveCachedETag(string etag, string body)
+        {
+            try
+            {
+                _cachedETag = etag;
+                _cachedResponseBody = body;
+                Directory.CreateDirectory(AppDataDir);
+                File.WriteAllText(ETagFile, $"{etag}\n{body}");
+            }
+            catch { /* Non-critical */ }
+        }
+
         public async Task<UpdateInfo?> CheckForUpdatesAsync(bool isAuto = false)
         {
             if (_disposed) return null;
-            using var response = await _httpClient.GetAsync(GitHubApiUrl, _cts.Token);
-            if (!response.IsSuccessStatusCode)
-                return null;
 
-            var json = await response.Content.ReadAsStringAsync();
+            // Use conditional request with ETag to avoid counting against GitHub rate limit
+            var request = new HttpRequestMessage(HttpMethod.Get, GitHubApiUrl);
+            if (!string.IsNullOrEmpty(_cachedETag))
+                request.Headers.IfNoneMatch.Add(new EntityTagHeaderValue(_cachedETag));
+
+            using var response = await _httpClient.SendAsync(request, _cts.Token);
+
+            string json;
+            if (response.StatusCode == System.Net.HttpStatusCode.NotModified && _cachedResponseBody != null)
+            {
+                // 304 — release hasn't changed, use cached response (doesn't count against rate limit)
+                json = _cachedResponseBody;
+            }
+            else if (response.IsSuccessStatusCode)
+            {
+                json = await response.Content.ReadAsStringAsync();
+                // Cache the ETag and response for next time
+                var etag = response.Headers.ETag?.Tag;
+                if (!string.IsNullOrEmpty(etag))
+                    SaveCachedETag(etag, json);
+            }
+            else
+            {
+                return null;
+            }
+
             var release = JsonNode.Parse(json);
 
             var tagName = release?["tag_name"]?.GetValue<string>();
