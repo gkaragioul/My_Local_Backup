@@ -271,18 +271,22 @@ namespace MyLocalBackup.UI.Views
         private long _lastUiUpdateTicks;
         private void OnProgressUpdated(object? sender, (double percentage, string task) data)
         {
-            // Throttle ALL UI updates to 4 FPS (250ms) to reduce Dispatcher overhead on low-end machines
-            // Use Interlocked for thread-safe throttle check across background threads
-            long nowTicks = DateTime.Now.Ticks;
-            long lastTicks = Interlocked.Read(ref _lastUiUpdateTicks);
-            if ((nowTicks - lastTicks) < TimeSpan.TicksPerMillisecond * 250) return;
-            Interlocked.Exchange(ref _lastUiUpdateTicks, nowTicks);
+            // Always let the final 100% update through so the progress bar completes
+            if (data.percentage < 100)
+            {
+                // Throttle intermediate UI updates to 4 FPS (250ms) to reduce Dispatcher overhead on low-end machines
+                long nowTicks = DateTime.Now.Ticks;
+                long lastTicks = Interlocked.Read(ref _lastUiUpdateTicks);
+                if ((nowTicks - lastTicks) < TimeSpan.TicksPerMillisecond * 250) return;
+                Interlocked.Exchange(ref _lastUiUpdateTicks, nowTicks);
+            }
 
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
             {
                 BackupProgressBar.Value = data.percentage;
                 TxtProgressPercent.Text = $"{(int)data.percentage}%";
-                TxtStatus.Text = data.percentage > 0 ? $"Backing up: {(int)data.percentage}%" : "Preparing backup...";
+                TxtStatus.Text = data.percentage >= 100 ? $"Backing up: Completed"
+                    : data.percentage > 0 ? $"Backing up: {(int)data.percentage}%" : "Preparing backup...";
 
                 // Safety check: ensure progress is visible if we're getting updates
                 if (ProgressSection.Visibility != Visibility.Visible)
