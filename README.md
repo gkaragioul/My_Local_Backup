@@ -1,4 +1,4 @@
-# MyLocalBackup (v0.8.7)
+# MyLocalBackup (v0.8.9)
 
 A free versioned local backup tool for Windows. Uses NTFS hard links for space-efficient incremental backups stored as full snapshots.
 
@@ -34,7 +34,7 @@ A free versioned local backup tool for Windows. Uses NTFS hard links for space-e
 
 - **Framework**: .NET 9 / WPF (Windows)
 - **Database**: SQLite via `Microsoft.Data.Sqlite` (WAL mode on local drives, exclusive mode on removable)
-- **Installer**: WiX v5 MSI (per-machine install to `%ProgramFiles%\MyLocalBackup`)
+- **Installer**: WiX v5 Burn bundle EXE wrapping MSI (per-machine install to `%ProgramFiles%\MyLocalBackup`)
 - **Self-contained**: Bundles the .NET runtime — no separate .NET install required
 
 ## Requirements
@@ -48,20 +48,20 @@ A free versioned local backup tool for Windows. Uses NTFS hard links for space-e
 dotnet build MyLocalBackup.UI/MyLocalBackup.UI.csproj
 ```
 
-## Release Build (MSI)
+## Release Build (EXE Installer)
 
 ```
 powershell -ExecutionPolicy Bypass -File release-build.ps1 -Version X.Y.Z
 ```
 
-The script handles: publish, regenerate Files.wxs, MSI build, copy to Desktop. The SHA256 hash is printed for inclusion in release notes.
+The script handles: publish, regenerate Files.wxs, MSI build, Burn bundle EXE build, copy to Desktop. The SHA256 hash is printed for inclusion in release notes.
 
 ## Project Structure
 
 ```
 MyLocalBackup.Core/       Backup engine, database, configuration, models, services
 MyLocalBackup.UI/         WPF desktop application
-Staging/                  WiX MSI packaging
+Staging/                  WiX MSI + Burn bundle EXE packaging
 release-build.ps1         Automated release build script
 PackagePortable.ps1       Portable ZIP packaging script
 ```
