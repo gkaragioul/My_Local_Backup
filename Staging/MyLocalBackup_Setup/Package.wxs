@@ -14,7 +14,7 @@
     <Property Id="MsiLogging" Value="voicewarmupx" />
     <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
-                                                                                                    <Feature Id="MainFeature" Title="MyLocalBackup" Level="1">
+                                                                                                            <Feature Id="MainFeature" Title="MyLocalBackup" Level="1">
       <ComponentGroupRef Id="AppFiles" />
       <ComponentGroupRef Id="AppFiles_cs" />
       <ComponentGroupRef Id="AppFiles_de" />
@@ -72,6 +72,8 @@
     </ComponentGroup>
   </Fragment>
 </Wix>
+
+
 
 
 

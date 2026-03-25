@@ -1,4 +1,4 @@
-# MyLocalBackup (v0.8.9)
+# MyLocalBackup (v0.9.0)
 
 A free versioned local backup tool for Windows. Uses NTFS hard links for space-efficient incremental backups stored as full snapshots.
 
@@ -6,10 +6,13 @@ A free versioned local backup tool for Windows. Uses NTFS hard links for space-e
 
 ### Backup Engine
 - **Versioned snapshots**: Each backup run creates a timestamped folder that looks like a complete copy, but unchanged files are hard-linked to previous snapshots — no duplicate data on disk.
+- **Parallel file processing**: Files within each directory are processed up to 4 concurrently, significantly reducing backup time on large folders.
 - **Rename/move detection**: Files moved or renamed are matched via size + last-write-time, so they're hard-linked rather than re-copied.
+- **Background retention**: Old snapshot cleanup runs in the background after a backup completes — the UI never hangs at 100%.
 - **Two-phase deletion**: Snapshots are marked `Deleting` before removal so a crash mid-delete leaves no orphans (cleaned up on next launch).
 - **Retention management**: Automatically prunes old snapshots when disk space is low or count limits are reached. Pinned snapshots are never deleted.
 - **Backup resume**: If a backup is interrupted (app close, update, crash), the next run resumes from where it left off — files already copied are skipped.
+- **Configurable exclusions**: Add folder names to `ExcludedFolderNames` in `config.json` to skip regeneratable artifacts (e.g. `node_modules`, `bin`, `obj`) and speed up backups of developer workspaces. Empty by default — everything is backed up unless explicitly excluded.
 - **Flush retry with bounded retries**: Batch database inserts retry up to 3 times on failure before dropping entries, preventing unbounded re-queuing.
 
 ### Scheduling

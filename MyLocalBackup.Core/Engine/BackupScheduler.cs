@@ -375,8 +375,15 @@ namespace MyLocalBackup.Core.Engine
                         Logger.Log(lastError);
                     }
 
+                    // Run retention in background — deleting old snapshots can take a long time
+                    // (millions of files), so we don't block the backup from completing.
                     var retention = new RetentionManager(_db, _config);
-                    retention.Prune(dest.RootPath);
+                    var retentionDest = dest.RootPath;
+                    _ = Task.Run(() =>
+                    {
+                        try { retention.Prune(retentionDest); }
+                        catch (Exception ex) { Logger.Log($"Background retention pruning failed: {ex}"); }
+                    });
                 }
                 catch (OperationCanceledException)
                 {

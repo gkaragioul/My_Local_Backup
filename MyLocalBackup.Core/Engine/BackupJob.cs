@@ -21,6 +21,7 @@ namespace MyLocalBackup.Core.Engine
 
         // Parallel processing configuration
         private const int BatchInsertSize = 500; // Number of file entries to batch before DB insert
+        private const int MaxParallelFiles = 4;  // Concurrent file ops; safe for HDD, good speedup on SSD
 
         // Shared state for parallel operations - List+lock is more memory-efficient than ConcurrentBag
         private List<FileEntry> _pendingEntries = new(BatchInsertSize + 1);
@@ -56,6 +57,10 @@ namespace MyLocalBackup.Core.Engine
             "RECYCLER",
             "$SysReset"
         };
+
+        // Combined exclusion set: system exclusions + user-configured exclusions
+        // Built once per job so the hot path (per-directory check) is an O(1) HashSet lookup.
+        private HashSet<string> _allExclusions = SystemExclusions;
 
         public BackupJob(BackupConfig config, DatabaseManager centralDb, string destinationRoot)
         {
@@ -198,6 +203,20 @@ namespace MyLocalBackup.Core.Engine
         public void Execute(Action<double, string>? onProgress = null, CancellationToken cancellationToken = default)
         {
             _cancellationToken = cancellationToken;
+
+            // Build combined exclusion set once for this job
+            if (_config.ExcludedFolderNames.Count > 0)
+            {
+                _allExclusions = new HashSet<string>(SystemExclusions, StringComparer.OrdinalIgnoreCase);
+                foreach (var name in _config.ExcludedFolderNames)
+                    if (!string.IsNullOrWhiteSpace(name))
+                        _allExclusions.Add(name.Trim());
+            }
+            else
+            {
+                _allExclusions = SystemExclusions;
+            }
+
             var snapshotsPath = Path.Combine(_destinationRoot, "Backup Snapshots");
 
             onProgress?.Invoke(0, "Preparing environment...");
@@ -211,7 +230,10 @@ namespace MyLocalBackup.Core.Engine
             onProgress?.Invoke(1, "Scanning source folders...");
             Interlocked.Exchange(ref _totalFileCount, CountFilesInSources(onProgress));
             Interlocked.Exchange(ref _processedFileCount, 0);
-            Logger.Log($"Found {Interlocked.Read(ref _totalFileCount)} files to process.");
+            var excludedList = _config.ExcludedFolderNames.Count > 0
+                ? $" Excluded folders: {string.Join(", ", _config.ExcludedFolderNames)}."
+                : string.Empty;
+            Logger.Log($"Found {Interlocked.Read(ref _totalFileCount)} files to process.{excludedList}");
             _cancellationToken.ThrowIfCancellationRequested();
 
             // Use a single master connection for the entire backup session
@@ -692,8 +714,8 @@ namespace MyLocalBackup.Core.Engine
 
                     var dirName = Path.GetFileName(subDir);
 
-                    // Skip system folders
-                    if (SystemExclusions.Contains(dirName))
+                    // Skip excluded and system folders
+                    if (_allExclusions.Contains(dirName))
                         continue;
 
                     // Skip symlinks/junctions to avoid infinite loops
@@ -787,6 +809,197 @@ namespace MyLocalBackup.Core.Engine
             return null;
         }
 
+        /// <summary>
+        /// Processes a single file: hard-link from previous snapshot, dedup-link, or full copy.
+        /// Called in parallel from ProcessDirectory. All shared state accessed here is already
+        /// thread-safe (Interlocked counters, locked lists, read-only dictionaries, locked DB writes).
+        /// Throws IOException (disk-full) to the caller; all other errors are caught internally.
+        /// </summary>
+        private void ProcessFile(
+            SqliteConnection centralConn, string sourceRootName, string sourceRoot,
+            string sourceFilePath, string stagingTargetDir,
+            RestorePoint? prevRp, int rpIdCentral, Action<double, string>? onProgress)
+        {
+            var fileName = Path.GetFileName(sourceFilePath);
+            var targetFilePath = Path.Combine(stagingTargetDir, fileName);
+            var fileInfo = new FileInfo(sourceFilePath);
+
+            // Handle symbolic links - try to preserve them
+            if (fileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                var linkTarget = fileInfo.LinkTarget;
+                if (linkTarget != null)
+                {
+                    try
+                    {
+                        File.CreateSymbolicLink(targetFilePath, linkTarget);
+                        var symlinkEntry = new FileEntry
+                        {
+                            RestorePointId = rpIdCentral,
+                            RelativePath = Path.Combine(sourceRootName, Path.GetRelativePath(sourceRoot, sourceFilePath)),
+                            IsDirectory = false,
+                            Size = 0,
+                            LastWriteTime = fileInfo.LastWriteTimeUtc,
+                            Attributes = (uint)fileInfo.Attributes
+                        };
+                        AddFileEntryBatched(symlinkEntry, centralConn);
+                        Interlocked.Increment(ref _processedFileCount);
+                        return;
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        Logger.Log($"Warning: Cannot create symlink (requires admin/developer mode): {fileName} -> {linkTarget}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Log($"Warning: Failed to preserve symlink {fileName}: {ex}");
+                    }
+                }
+                else
+                {
+                    Logger.Log($"Warning: Could not resolve symlink target for file: {sourceFilePath}");
+                }
+
+                // Couldn't preserve symlink - record as failed so user sees it
+                Logger.Log($"Skipping unpreservable symlink: {sourceFilePath}");
+                lock (_failedFilesLock) { _failedFiles.Add(sourceFilePath); }
+                Interlocked.Increment(ref _processedFileCount);
+                return;
+            }
+
+            var relativePath = Path.GetRelativePath(sourceRoot, sourceFilePath);
+            var dbRelativePath = Path.Combine(sourceRootName, relativePath);
+
+            // Resume skip: if this file already exists in the resumed snapshot with matching metadata, skip copy
+            if (_resumedFilePaths != null && _resumedFilePaths.Contains(dbRelativePath) && File.Exists(targetFilePath))
+            {
+                try
+                {
+                    var existingInfo = new FileInfo(targetFilePath);
+                    if (existingInfo.Length == fileInfo.Length && existingInfo.LastWriteTimeUtc == fileInfo.LastWriteTimeUtc)
+                    {
+                        var resumeEntry = new FileEntry
+                        {
+                            RestorePointId = rpIdCentral,
+                            RelativePath = dbRelativePath,
+                            IsDirectory = false,
+                            Size = fileInfo.Length,
+                            LastWriteTime = fileInfo.LastWriteTimeUtc,
+                            Attributes = (uint)fileInfo.Attributes
+                        };
+                        AddFileEntryBatched(resumeEntry, centralConn);
+                        // Don't increment _processedFileCount — already counted in BuildResumeIndex
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Log($"Warning: Resume check failed for {fileName}, will re-process: {ex.Message}");
+                }
+            }
+
+            bool linked = false;
+
+            // Priority 1: Check same path in latest snapshot
+            if (prevRp != null)
+            {
+                var prevSnapshotFilePath = Path.Combine(prevRp.Path, dbRelativePath);
+                if (File.Exists(prevSnapshotFilePath))
+                {
+                    var prevInfo = new FileInfo(prevSnapshotFilePath);
+                    if (fileInfo.Length == prevInfo.Length && fileInfo.LastWriteTimeUtc == prevInfo.LastWriteTimeUtc)
+                    {
+                        try
+                        {
+                            linked = HardLinkManager.Create(targetFilePath, prevSnapshotFilePath);
+                        }
+                        catch (Exception hlEx)
+                        {
+                            Logger.Log($"Warning: Hard link failed for {fileName}: {hlEx}");
+                        }
+                    }
+                }
+            }
+
+            // Priority 2: Rename detection (using pre-loaded dedup index for O(1) lookup)
+            if (!linked && _dedupIndex != null && _restorePointCache != null)
+            {
+                var match = FindInDedupIndex(fileInfo.Length, fileInfo.LastWriteTimeUtc);
+                if (match != null)
+                {
+                    if (_restorePointCache.TryGetValue(match.Value.rpId, out var matchRp))
+                    {
+                        var matchPhysicalPath = Path.Combine(matchRp.Path, match.Value.relativePath);
+                        try
+                        {
+                            if (File.Exists(matchPhysicalPath))
+                                linked = HardLinkManager.Create(targetFilePath, matchPhysicalPath);
+                        }
+                        catch (Exception hlEx)
+                        {
+                            // TOCTOU: source may have been deleted between Exists check and Create
+                            Logger.Log($"Warning: Hard link failed for {fileName}: {hlEx.Message}");
+                        }
+                    }
+                }
+            }
+
+            // Priority 3: Copy (with progress for large files and Read-Share fallback)
+            if (!linked)
+            {
+                try
+                {
+                    CopyFileWithProgress(sourceFilePath, targetFilePath, fileInfo.Length, onProgress, fileName);
+                }
+                catch
+                {
+                    // Clean up partial/truncated file to prevent dedup index poisoning
+                    try { if (File.Exists(targetFilePath)) File.Delete(targetFilePath); }
+                    catch (Exception cleanupEx) { Logger.Log($"Warning: Could not clean up partial file {targetFilePath}: {cleanupEx.Message}"); }
+                    throw;
+                }
+                // Set timestamps separately - failure here shouldn't count as a copy error
+                try
+                {
+                    File.SetLastWriteTimeUtc(targetFilePath, fileInfo.LastWriteTimeUtc);
+                    File.SetCreationTimeUtc(targetFilePath, fileInfo.CreationTimeUtc);
+                }
+                catch (Exception tsEx)
+                {
+                    Logger.Log($"Warning: Could not set timestamps on {fileName}: {tsEx}");
+                }
+            }
+
+            // Record in central DB (batched for performance)
+            var entry = new FileEntry
+            {
+                RestorePointId = rpIdCentral,
+                RelativePath = dbRelativePath,
+                IsDirectory = false,
+                Size = fileInfo.Length,
+                LastWriteTime = fileInfo.LastWriteTimeUtc,
+                Attributes = (uint)fileInfo.Attributes
+            };
+            AddFileEntryBatched(entry, centralConn);
+            Interlocked.Increment(ref _processedFileCount);
+
+            // Calculate progress based on global file count (5-95% range for file processing)
+            long totalForFileProgress = Interlocked.Read(ref _totalFileCount);
+            double fileProgress = totalForFileProgress > 0
+                ? 5.0 + (90.0 * Interlocked.Read(ref _processedFileCount) / totalForFileProgress)
+                : 5.0;
+            fileProgress = Math.Min(fileProgress, 95.0);
+
+            // Throttle per-file progress to at most once every 250ms to reduce GC pressure
+            var now = DateTime.Now.Ticks;
+            var lastTicks = Interlocked.Read(ref _lastProgressReportTicks);
+            if (now - lastTicks >= TimeSpan.TicksPerMillisecond * 250)
+            {
+                Interlocked.Exchange(ref _lastProgressReportTicks, now);
+                onProgress?.Invoke(fileProgress, sourceFilePath);
+            }
+        }
+
         private void ProcessDirectory(SqliteConnection centralConn, string sourceRootName, string sourceRoot, string currentDir, string stagingTargetDir, RestorePoint? prevRp, int rpIdCentral, Action<double, string>? onProgress)
         {
             // Check for cancellation at directory level for quick exit
@@ -810,10 +1023,11 @@ namespace MyLocalBackup.Core.Engine
             }
 
             // 1. Process Files
-            IEnumerable<string> files;
+            // Materialise to List so all threads pull from a stable snapshot — EnumerateFiles is not thread-safe.
+            List<string> files;
             try
             {
-                files = Directory.EnumerateFiles(currentDir);
+                files = Directory.EnumerateFiles(currentDir).ToList();
             }
             catch (Exception ex)
             {
@@ -821,220 +1035,48 @@ namespace MyLocalBackup.Core.Engine
                 return;
             }
 
-            foreach (var sourceFilePath in files)
+            // Disk-full is signalled here rather than thrown inside the parallel body,
+            // because throwing inside Parallel.ForEach wraps it in AggregateException.
+            // We capture it and re-throw cleanly after the parallel block.
+            IOException? diskFullEx = null;
+
+            try
             {
-                // Check cancellation before each file
-                _cancellationToken.ThrowIfCancellationRequested();
-
-                try
-                {
-                    var fileName = Path.GetFileName(sourceFilePath);
-                    var targetFilePath = Path.Combine(stagingTargetDir, fileName);
-
-                    var fileInfo = new FileInfo(sourceFilePath);
-
-                    // Handle symbolic links - try to preserve them
-                    if (fileInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                Parallel.ForEach(
+                    files,
+                    new ParallelOptions { MaxDegreeOfParallelism = MaxParallelFiles, CancellationToken = _cancellationToken },
+                    sourceFilePath =>
                     {
-                        var linkTarget = fileInfo.LinkTarget;
-                        if (linkTarget != null)
-                        {
-                            try
-                            {
-                                // Preserve the symlink by creating one with the same target
-                                File.CreateSymbolicLink(targetFilePath, linkTarget);
+                        if (diskFullEx != null) return; // disk already full — skip remaining files
 
-                                // Record symlink in database (batched for performance)
-                                var symlinkEntry = new FileEntry
-                                {
-                                    RestorePointId = rpIdCentral,
-                                    RelativePath = Path.Combine(sourceRootName, Path.GetRelativePath(sourceRoot, sourceFilePath)),
-                                    IsDirectory = false,
-                                    Size = 0,
-                                    LastWriteTime = fileInfo.LastWriteTimeUtc,
-                                    Attributes = (uint)fileInfo.Attributes
-                                };
-                                AddFileEntryBatched(symlinkEntry, centralConn);
-
-                                Interlocked.Increment(ref _processedFileCount);
-                                continue;
-                            }
-                            catch (UnauthorizedAccessException)
-                            {
-                                // Symlink creation requires admin or developer mode - log once
-                                Logger.Log($"Warning: Cannot create symlink (requires admin/developer mode): {fileName} -> {linkTarget}");
-                            }
-                            catch (Exception ex)
-                            {
-                                Logger.Log($"Warning: Failed to preserve symlink {fileName}: {ex}");
-                            }
-                        }
-                        else
-                        {
-                            Logger.Log($"Warning: Could not resolve symlink target for file: {sourceFilePath}");
-                        }
-
-                        // Couldn't preserve symlink - record as failed so user sees it
-                        Logger.Log($"Skipping unpreservable symlink: {sourceFilePath}");
-                        lock (_failedFilesLock) { _failedFiles.Add(sourceFilePath); }
-                        Interlocked.Increment(ref _processedFileCount);
-                        continue;
-                    }
-                    var relativePath = Path.GetRelativePath(sourceRoot, sourceFilePath);
-                    var dbRelativePath = Path.Combine(sourceRootName, relativePath);
-
-                    // Resume skip: if this file already exists in the resumed snapshot with matching metadata, skip copy
-                    if (_resumedFilePaths != null && _resumedFilePaths.Contains(dbRelativePath) && File.Exists(targetFilePath))
-                    {
                         try
                         {
-                            var existingInfo = new FileInfo(targetFilePath);
-                            if (existingInfo.Length == fileInfo.Length && existingInfo.LastWriteTimeUtc == fileInfo.LastWriteTimeUtc)
-                            {
-                                // File already backed up in the interrupted run — just record in DB
-                                var resumeEntry = new FileEntry
-                                {
-                                    RestorePointId = rpIdCentral,
-                                    RelativePath = dbRelativePath,
-                                    IsDirectory = false,
-                                    Size = fileInfo.Length,
-                                    LastWriteTime = fileInfo.LastWriteTimeUtc,
-                                    Attributes = (uint)fileInfo.Attributes
-                                };
-                                AddFileEntryBatched(resumeEntry, centralConn);
-                                // Don't increment _processedFileCount — already counted in BuildResumeIndex
-                                continue;
-                            }
+                            ProcessFile(centralConn, sourceRootName, sourceRoot, sourceFilePath,
+                                        stagingTargetDir, prevRp, rpIdCentral, onProgress);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw; // Must come before Exception — let Parallel.ForEach propagate cancellation cleanly
+                        }
+                        catch (IOException ex) when (IsDiskFull(ex))
+                        {
+                            _hasErrors = true;
+                            Logger.Log($"FATAL: Disk full on destination: {ex}");
+                            // Store the first disk-full exception; ignore subsequent ones from other threads
+                            Interlocked.CompareExchange(ref diskFullEx, ex, null);
                         }
                         catch (Exception ex)
                         {
-                            Logger.Log($"Warning: Resume check failed for {fileName}, will re-process: {ex.Message}");
+                            _hasErrors = true;
+                            lock (_failedFilesLock) { _failedFiles.Add(sourceFilePath); }
+                            if (ex is not FileNotFoundException)
+                                Logger.Log($"Error backing up file {sourceFilePath}: {ex}");
                         }
-                    }
-
-                    bool linked = false;
-
-                    // Priority 1: Check same path in latest snapshot
-                    if (prevRp != null)
-                    {
-                        var prevSnapshotFilePath = Path.Combine(prevRp.Path, dbRelativePath);
-                        if (File.Exists(prevSnapshotFilePath))
-                        {
-                            var prevInfo = new FileInfo(prevSnapshotFilePath);
-                            if (fileInfo.Length == prevInfo.Length && fileInfo.LastWriteTimeUtc == prevInfo.LastWriteTimeUtc)
-                            {
-                                try
-                                {
-                                    linked = HardLinkManager.Create(targetFilePath, prevSnapshotFilePath);
-                                }
-                                catch (Exception hlEx)
-                                {
-                                    Logger.Log($"Warning: Hard link failed for {fileName}: {hlEx}");
-                                }
-                            }
-                        }
-                    }
-
-                    // Priority 2: Rename detection (using pre-loaded dedup index for O(1) lookup)
-                    if (!linked && _dedupIndex != null && _restorePointCache != null)
-                    {
-                        var match = FindInDedupIndex(fileInfo.Length, fileInfo.LastWriteTimeUtc);
-                        if (match != null)
-                        {
-                            if (_restorePointCache.TryGetValue(match.Value.rpId, out var matchRp))
-                            {
-                                var matchPhysicalPath = Path.Combine(matchRp.Path, match.Value.relativePath);
-                                try
-                                {
-                                    if (File.Exists(matchPhysicalPath))
-                                        linked = HardLinkManager.Create(targetFilePath, matchPhysicalPath);
-                                }
-                                catch (Exception hlEx)
-                                {
-                                    // TOCTOU: source may have been deleted between Exists check and Create
-                                    Logger.Log($"Warning: Hard link failed for {fileName}: {hlEx.Message}");
-                                }
-                            }
-                        }
-                    }
-
-                    // Priority 3: Copy (with progress for large files and Read-Share fallback)
-                    if (!linked)
-                    {
-                        try
-                        {
-                            CopyFileWithProgress(sourceFilePath, targetFilePath, fileInfo.Length, onProgress, fileName);
-                        }
-                        catch
-                        {
-                            // Clean up partial/truncated file to prevent dedup index poisoning
-                            try { if (File.Exists(targetFilePath)) File.Delete(targetFilePath); }
-                            catch (Exception cleanupEx) { Logger.Log($"Warning: Could not clean up partial file {targetFilePath}: {cleanupEx.Message}"); }
-                            throw;
-                        }
-                        // Set timestamps separately - failure here shouldn't count as a copy error
-                        try
-                        {
-                            File.SetLastWriteTimeUtc(targetFilePath, fileInfo.LastWriteTimeUtc);
-                            File.SetCreationTimeUtc(targetFilePath, fileInfo.CreationTimeUtc);
-                        }
-                        catch (Exception tsEx)
-                        {
-                            Logger.Log($"Warning: Could not set timestamps on {fileName}: {tsEx}");
-                        }
-                    }
-
-                    // Record in central DB (batched for performance)
-                    var entry = new FileEntry
-                    {
-                        RestorePointId = rpIdCentral,
-                        RelativePath = dbRelativePath,
-                        IsDirectory = false,
-                        Size = fileInfo.Length,
-                        LastWriteTime = fileInfo.LastWriteTimeUtc,
-                        Attributes = (uint)fileInfo.Attributes
-                    };
-                    AddFileEntryBatched(entry, centralConn);
-
-                    Interlocked.Increment(ref _processedFileCount);
-
-                    // Calculate progress based on global file count (5-95% range for file processing)
-                    long totalForFileProgress = Interlocked.Read(ref _totalFileCount);
-                    double fileProgress = totalForFileProgress > 0
-                        ? 5.0 + (90.0 * Interlocked.Read(ref _processedFileCount) / totalForFileProgress)
-                        : 5.0;
-                    fileProgress = Math.Min(fileProgress, 95.0);
-
-                    // Throttle per-file progress to at most once every 250ms to reduce GC pressure
-                    var now = DateTime.Now.Ticks;
-                    var lastTicks = Interlocked.Read(ref _lastProgressReportTicks);
-                    if (now - lastTicks >= TimeSpan.TicksPerMillisecond * 250)
-                    {
-                        Interlocked.Exchange(ref _lastProgressReportTicks, now);
-                        onProgress?.Invoke(fileProgress, sourceFilePath);
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    throw; // Re-throw to stop processing immediately
-                }
-                catch (IOException ex) when (IsDiskFull(ex))
-                {
-                    _hasErrors = true;
-                    Logger.Log($"FATAL: Disk full on destination: {ex}");
-                    throw; // Abort the whole backup immediately if disk is full
-                }
-                catch (Exception ex)
-                {
-                    _hasErrors = true;
-                    lock (_failedFilesLock) { _failedFiles.Add(sourceFilePath); }
-                    // Only log if it's not a "file not found" for a symlink target
-                    if (ex is not FileNotFoundException)
-                    {
-                        Logger.Log($"Error backing up file {sourceFilePath}: {ex}");
-                    }
-                }
+                    });
             }
+            catch (OperationCanceledException) { throw; }
+
+            if (diskFullEx != null) throw diskFullEx;
 
             // 2. Recurse into subdirectories
             IEnumerable<string> subDirs;
@@ -1055,8 +1097,8 @@ namespace MyLocalBackup.Core.Engine
 
                 var dirName = Path.GetFileName(subDir);
 
-                // Skip system folders (Recycle Bin, System Volume Information, etc.)
-                if (SystemExclusions.Contains(dirName))
+                // Skip system and user-excluded folders
+                if (_allExclusions.Contains(dirName))
                     continue;
 
                 var targetSubDir = Path.Combine(stagingTargetDir, dirName);

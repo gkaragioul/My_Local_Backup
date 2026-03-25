@@ -47,5 +47,13 @@ namespace MyLocalBackup.Core.Models
         public bool AutoDeleteOldBackups { get; set; } = true;
         public bool MinimizeToTray { get; set; } = true;
         public bool LaunchAtStartup { get; set; }
+
+        /// <summary>
+        /// Folder names to exclude from backup (case-insensitive match on folder name, not full path).
+        /// Empty by default — the app backs up everything the user pointed it at.
+        /// Advanced users can populate this list via config.json to skip regeneratable artifacts
+        /// (e.g. "node_modules", "bin", "obj", ".vs") and speed up backups of dev folders.
+        /// </summary>
+        public List<string> ExcludedFolderNames { get; set; } = new();
     }
 }
