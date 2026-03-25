@@ -1,4 +1,4 @@
-# MyLocalBackup (v0.9.1)
+# MyLocalBackup (v0.9.2)
 
 A free versioned local backup tool for Windows. Uses NTFS hard links for space-efficient incremental backups stored as full snapshots.
 

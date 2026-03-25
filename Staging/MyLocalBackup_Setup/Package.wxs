@@ -14,7 +14,7 @@
     <Property Id="MsiLogging" Value="voicewarmupx" />
     <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
-        <Feature Id="MainFeature" Title="MyLocalBackup" Level="1">
+            <Feature Id="MainFeature" Title="MyLocalBackup" Level="1">
       <ComponentGroupRef Id="AppFiles" />
       <ComponentGroupRef Id="AppFiles_cs" />
       <ComponentGroupRef Id="AppFiles_de" />
@@ -34,7 +34,7 @@
   </Package>
 
   <Fragment>
-    <!-- Per-user install: %LOCALAPPDATA%\Programs\MyLocalBackup â€” no admin/UAC required -->
+    <!-- Per-user install: %LOCALAPPDATA%\Programs\MyLocalBackup - no admin/UAC required -->
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="ProgramsFolder" Name="Programs">
         <Directory Id="INSTALLFOLDER" Name="MyLocalBackup" />
@@ -45,7 +45,17 @@
       <Directory Id="ApplicationProgramsFolder" Name="MyLocalBackup" />
     </StandardDirectory>
 
+    <!-- User desktop (per-user MSI resolves DesktopFolder to %USERPROFILE%\Desktop) -->
     <StandardDirectory Id="DesktopFolder" />
+  </Fragment>
+
+  <!-- COMMONDESKTOPFOLDER is the Windows Installer property for C:\Users\Public\Desktop.
+       It is not in WiX's StandardDirectory list so must be declared under TARGETDIR directly.
+       Used only to clean up the leftover shortcut that old per-machine installers left there. -->
+  <Fragment>
+    <StandardDirectory Id="TARGETDIR">
+      <Directory Id="COMMONDESKTOPFOLDER" />
+    </StandardDirectory>
   </Fragment>
 
   <Fragment>
@@ -72,7 +82,16 @@
                   IconIndex="0" />
         <RegistryValue Root="HKCU" Key="Software\MyLocalBackup" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
       </Component>
+
+      <!-- Removes the leftover MyLocalBackup.lnk from C:\Users\Public\Desktop that old per-machine
+           installers (v0.8.x/v0.9.0) left behind. Per-machine MSIs resolve DesktopFolder to the
+           Public Desktop, so MajorUpgrade cannot clean it up (different scope). -->
+      <Component Id="RemoveOldPublicDesktopShortcut" Directory="COMMONDESKTOPFOLDER" Guid="B2C3D4E5-F6A7-4B8C-9D0E-F1A2B3C4D5E6">
+        <RemoveFile Id="RemoveOldPublicDesktopLnk" Name="MyLocalBackup.lnk" On="install" />
+        <RegistryValue Root="HKCU" Key="Software\MyLocalBackup" Name="CleanedPublicShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
     </ComponentGroup>
   </Fragment>
 </Wix>
+
 

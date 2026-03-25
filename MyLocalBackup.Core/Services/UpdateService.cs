@@ -388,15 +388,17 @@ namespace MyLocalBackup.Core.Services
                     {
                         $"$msi = '{installerPath.Replace("'", "''")}'",
                         $"$log = '{logPath.Replace("'", "''")}'",
-                        $"$app = '{appExePath.Replace("'", "''")}'",
-                        "$fallback = \"$env:LOCALAPPDATA\\Programs\\MyLocalBackup\\MyLocalBackup.UI.exe\"",
+                        $"$oldApp = '{appExePath.Replace("'", "''")}'",
+                        "$newApp = \"$env:LOCALAPPDATA\\Programs\\MyLocalBackup\\MyLocalBackup.UI.exe\"",
                         "Start-Sleep -Seconds 2",
                         "$proc = Start-Process msiexec.exe -ArgumentList \"/i `\"$msi`\" /passive REBOOT=ReallySuppress /l*v `\"$log`\"\" -Wait -PassThru",
                         "if ($proc.ExitCode -ne 0) {",
                         "  Add-Content $log \"MSI exited with code $($proc.ExitCode)\"",
                         "}",
-                        "if (Test-Path $app) { Start-Process $app }",
-                        "elseif (Test-Path $fallback) { Start-Process $fallback }",
+                        "# Always prefer the new install location — if it exists the install succeeded.",
+                        "# Fall back to old path only if new location is absent (install failed).",
+                        "if (Test-Path $newApp) { Start-Process $newApp }",
+                        "elseif (Test-Path $oldApp) { Start-Process $oldApp }",
                         "Remove-Item $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue"
                     };
 
@@ -428,15 +430,17 @@ namespace MyLocalBackup.Core.Services
                     {
                         $"$installer = '{installerPath.Replace("'", "''")}'",
                         $"$log = '{logPath.Replace("'", "''")}'",
-                        $"$app = '{appExePath.Replace("'", "''")}'",
-                        "$fallback = \"$env:LOCALAPPDATA\\Programs\\MyLocalBackup\\MyLocalBackup.UI.exe\"",
+                        $"$oldApp = '{appExePath.Replace("'", "''")}'",
+                        "$newApp = \"$env:LOCALAPPDATA\\Programs\\MyLocalBackup\\MyLocalBackup.UI.exe\"",
                         "Start-Sleep -Seconds 2",
                         "$proc = Start-Process $installer -ArgumentList \"/passive /norestart /log `\"$log`\"\" -Wait -PassThru",
                         "if ($proc.ExitCode -ne 0) {",
                         "  Add-Content $log \"Installer exited with code $($proc.ExitCode)\"",
                         "}",
-                        "if (Test-Path $app) { Start-Process $app }",
-                        "elseif (Test-Path $fallback) { Start-Process $fallback }",
+                        "# Always prefer the new install location — if it exists the install succeeded.",
+                        "# Fall back to old path only if new location is absent (install failed).",
+                        "if (Test-Path $newApp) { Start-Process $newApp }",
+                        "elseif (Test-Path $oldApp) { Start-Process $oldApp }",
                         "Remove-Item $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue"
                     };
 
