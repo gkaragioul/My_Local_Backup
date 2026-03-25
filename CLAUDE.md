@@ -20,15 +20,33 @@ When creating a new release:
 2. **Run the release build script**: `powershell -ExecutionPolicy Bypass -File release-build.ps1 -Version X.Y.Z`
    - This handles: publish, regenerate Files.wxs, MSI build, Burn bundle EXE build, copy to Desktop
    - The script outputs the EXE SHA256 hash — include it in the GitHub release notes
-3. **Commit and push**:
+3. **User MUST test the upgrade path before pushing** (see Pre-Release Test Checklist below)
+4. **Commit and push**:
    - `git add` changed files, `git commit`, `git push origin main`
    - `gh release create vX.Y.Z --repo georgekgr12/MyLocalBackup ...`
    - `gh release create vX.Y.Z --repo georgekgr12/MyLocalBackup-releases ... Staging/MyLocalBackup_Setup/MyLocalBackupSetup.exe#MyLocalBackupSetup.exe`
-4. **Include SHA256 in release notes**: Format: `SHA256: <hash>` (the update checker parses this)
-5. **Update README.md**: Update the version in the heading (`# MyLocalBackup (vX.Y.Z)`) and ensure the feature list, tech stack, and descriptions reflect any recent changes. Commit and push the README update.
-6. **Update repo descriptions** if the release includes significant new functionality: update the GitHub repo description/about via `gh repo edit` if appropriate.
+5. **Include SHA256 in release notes**: Format: `SHA256: <hash>` (the update checker parses this)
+6. **Update README.md**: Update the version in the heading (`# MyLocalBackup (vX.Y.Z)`) and ensure the feature list, tech stack, and descriptions reflect any recent changes. Commit and push the README update.
+7. **Update repo descriptions** if the release includes significant new functionality: update the GitHub repo description/about via `gh repo edit` if appropriate.
 
 Both releases (source + releases repo) must be created. The app will only detect updates from the releases repo.
+
+### Pre-Release Test Checklist (MANDATORY before pushing to GitHub)
+
+All releases that touch the installer, updater, or `Package.wxs` MUST be tested as an upgrade — not just a fresh install. Fresh-install-only testing is what caused the v0.9.0/v0.9.1/v0.9.2 update bugs to reach production.
+
+**The user must perform this test manually before publishing:**
+
+1. Install the PREVIOUS released version (download from GitHub releases)
+2. Open the app → go to Settings → click "Check for Updates"
+   - At this point the new release is NOT yet on GitHub — substitute by running the built EXE from Desktop directly to simulate the install step
+3. After install completes, verify:
+   - [ ] Only ONE desktop shortcut exists (no duplicate)
+   - [ ] App relaunched automatically into the NEW version (check version number in title/about)
+   - [ ] App functions correctly (backup runs, settings persist)
+4. Only after passing all three checks: push to GitHub and publish the release
+
+**Why this matters**: Every update bug encountered so far (runtime error, duplicate shortcut, wrong relaunch path) would have been caught immediately by this test. The in-app update path is different from a fresh install and must be exercised explicitly.
 
 ### Critical Rules
 
@@ -40,6 +58,7 @@ Both releases (source + releases repo) must be created. The app will only detect
 ## Version History
 
 Versions follow `0.X.Y` pattern. Check last commit message or `.csproj` for current version.
+- v0.9.2: Fix duplicate desktop shortcut and auto-relaunch after in-app update from v0.8.x
 - v0.9.1: Switched installer to per-user (fixes in-app update ".NET Desktop Runtime" error)
 - v0.9.0: Parallel file processing, background retention, configurable exclusions
 - v0.8.x: Earlier releases (per-machine installer — superseded)
