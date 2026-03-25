@@ -24,8 +24,8 @@ When creating a new release:
 4. **Commit and push**:
    - `git add` changed files, `git commit`, `git push origin main`
    - `gh release create vX.Y.Z --repo georgekgr12/MyLocalBackup ...`
-   - `gh release create vX.Y.Z --repo georgekgr12/MyLocalBackup-releases ... Staging/MyLocalBackup_Setup/MyLocalBackupSetup.exe#MyLocalBackupSetup.exe`
-5. **Include SHA256 in release notes**: Format: `SHA256: <hash>` (the update checker parses this)
+   - `gh release create vX.Y.Z --repo georgekgr12/MyLocalBackup-releases ... Staging/MyLocalBackup_Setup/MyLocalBackupSetup.msi#MyLocalBackupSetup.msi Staging/MyLocalBackup_Setup/MyLocalBackupSetup.exe#MyLocalBackupSetup.exe`
+5. **Include the MSI SHA256 in release notes** (NOT the EXE hash): Format: `SHA256: <hash>`. The build script prints both hashes and clearly labels which is which — use the MSI one. The in-app updater downloads the MSI and verifies this hash.
 6. **Update README.md**: Update the version in the heading (`# MyLocalBackup (vX.Y.Z)`) and ensure the feature list, tech stack, and descriptions reflect any recent changes. Commit and push the README update.
 7. **Update repo descriptions** if the release includes significant new functionality: update the GitHub repo description/about via `gh repo edit` if appropriate.
 
@@ -58,6 +58,7 @@ All releases that touch the installer, updater, or `Package.wxs` MUST be tested 
 ## Version History
 
 Versions follow `0.X.Y` pattern. Check last commit message or `.csproj` for current version.
+- v0.9.3: Fix duplicate shortcut (COMMONDESKTOPFOLDER SetProperty) + switch in-app updates to MSI
 - v0.9.2: Fix duplicate desktop shortcut and auto-relaunch after in-app update from v0.8.x
 - v0.9.1: Switched installer to per-user (fixes in-app update ".NET Desktop Runtime" error)
 - v0.9.0: Parallel file processing, background retention, configurable exclusions
@@ -96,8 +97,8 @@ Per-user install eliminates ALL of this — no elevation, no UAC, `msiexec` and 
 **Other invariants that must not change:**
 - `UpgradeCode` in `Package.wxs` is `D1E2F3A4-B5C6-4D7E-8F9A-B0C1D2E3F4A5` — never change this (breaks upgrades)
 - Registry keys in shortcuts must use `Root="HKCU"` (per-user, not HKLM)
-- The EXE hash (not MSI hash) goes in GitHub release notes — the build script computes and prints the EXE hash
-- Upload the **EXE** (Burn bundle) to GitHub releases — not the MSI
+- The **MSI hash** (not EXE hash) goes in GitHub release notes — the in-app updater downloads the MSI
+- Upload **BOTH MSI and EXE** to GitHub releases — MSI is used by in-app updater, EXE is for fresh installs
 - The relaunch path fallback in `UpdateService.cs` must use `LocalApplicationData\Programs\MyLocalBackup` (not ProgramFiles)
 
 ## Migration Note (Users Upgrading from v0.9.0 or Earlier)

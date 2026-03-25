@@ -163,8 +163,11 @@ namespace MyLocalBackup.Core.Services
                         return null;
 
                     var assets = release?["assets"]?.AsArray();
-                    var setupAsset = assets?.FirstOrDefault(a => a?["name"]?.GetValue<string>()?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true)
-                                     ?? assets?.FirstOrDefault(a => a?["name"]?.GetValue<string>()?.EndsWith(".msi", StringComparison.OrdinalIgnoreCase) == true);
+                    // Prefer MSI for in-app updates: msiexec /passive is reliable for per-user MSIs
+                    // and runs correctly from a background process with no UAC or Burn bundle quirks.
+                    // EXE (Burn bundle) is the fallback for releases that only ship the bundle.
+                    var setupAsset = assets?.FirstOrDefault(a => a?["name"]?.GetValue<string>()?.EndsWith(".msi", StringComparison.OrdinalIgnoreCase) == true)
+                                     ?? assets?.FirstOrDefault(a => a?["name"]?.GetValue<string>()?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true);
 
                     if (setupAsset != null)
                     {

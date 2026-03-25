@@ -150,16 +150,25 @@ if (-not (Test-Path "$msiDir\MyLocalBackupSetup.exe")) {
     throw "Bundle build reported success but MyLocalBackupSetup.exe was not found"
 }
 
-# Step 4: Compute EXE hash
-Write-Host "[4/5] Computing EXE hash..." -ForegroundColor Yellow
+# Step 4: Compute hashes
+# MSI hash goes in release notes — the in-app updater downloads and verifies the MSI.
+# EXE hash is informational only (EXE is for manual fresh installs from Desktop).
+Write-Host "[4/5] Computing hashes..." -ForegroundColor Yellow
+$msiHash = (Get-FileHash "$msiDir\MyLocalBackupSetup.msi" -Algorithm SHA256).Hash.ToLower()
 $exeHash = (Get-FileHash "$msiDir\MyLocalBackupSetup.exe" -Algorithm SHA256).Hash.ToLower()
 
-# Step 5: Copy to Desktop
+# Step 5: Copy EXE to Desktop (for manual fresh installs)
 Write-Host "[5/5] Copying EXE to Desktop..." -ForegroundColor Yellow
 Copy-Item "$msiDir\MyLocalBackupSetup.exe" "$env:USERPROFILE\Desktop\MyLocalBackupSetup_v$Version.exe" -Force
 
 Write-Host "`n=== Build Complete ===" -ForegroundColor Green
-Write-Host "EXE: $env:USERPROFILE\Desktop\MyLocalBackupSetup_v$Version.exe"
+Write-Host "EXE (fresh install): $env:USERPROFILE\Desktop\MyLocalBackupSetup_v$Version.exe"
+Write-Host "MSI (in-app update): $msiDir\MyLocalBackupSetup.msi"
+Write-Host ""
 Write-Host "EXE SHA256: $exeHash"
-Write-Host "`nInclude this in your GitHub release notes:"
-Write-Host "SHA256: $exeHash" -ForegroundColor Cyan
+Write-Host "MSI SHA256: $msiHash"
+Write-Host ""
+Write-Host "Include the MSI SHA256 in your GitHub release notes (used by in-app updater):" -ForegroundColor Yellow
+Write-Host "SHA256: $msiHash" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Upload to GitHub releases repo: MyLocalBackupSetup.msi AND MyLocalBackupSetup.exe" -ForegroundColor Yellow

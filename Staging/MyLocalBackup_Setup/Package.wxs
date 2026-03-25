@@ -14,7 +14,14 @@
     <Property Id="MsiLogging" Value="voicewarmupx" />
     <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
-            <Feature Id="MainFeature" Title="MyLocalBackup" Level="1">
+
+    <!-- COMMONDESKTOPFOLDER is only set by the MSI engine in per-machine context (ALLUSERS=1).
+         For per-user installs it is empty, so RemoveFile targeting it would be a no-op.
+         We set it explicitly from %PUBLIC% so the cleanup component works regardless of scope. -->
+    <SetProperty Id="COMMONDESKTOPFOLDER" Before="CostInitialize" Sequence="both"
+                 Value="[%PUBLIC]\Desktop" />
+
+        <Feature Id="MainFeature" Title="MyLocalBackup" Level="1">
       <ComponentGroupRef Id="AppFiles" />
       <ComponentGroupRef Id="AppFiles_cs" />
       <ComponentGroupRef Id="AppFiles_de" />
@@ -49,9 +56,8 @@
     <StandardDirectory Id="DesktopFolder" />
   </Fragment>
 
-  <!-- COMMONDESKTOPFOLDER is the Windows Installer property for C:\Users\Public\Desktop.
-       It is not in WiX's StandardDirectory list so must be declared under TARGETDIR directly.
-       Used only to clean up the leftover shortcut that old per-machine installers left there. -->
+  <!-- COMMONDESKTOPFOLDER = C:\Users\Public\Desktop, set via SetProperty above.
+       Declared under TARGETDIR so RemoveFile can reference it as a directory. -->
   <Fragment>
     <StandardDirectory Id="TARGETDIR">
       <Directory Id="COMMONDESKTOPFOLDER" />
@@ -84,8 +90,8 @@
       </Component>
 
       <!-- Removes the leftover MyLocalBackup.lnk from C:\Users\Public\Desktop that old per-machine
-           installers (v0.8.x/v0.9.0) left behind. Per-machine MSIs resolve DesktopFolder to the
-           Public Desktop, so MajorUpgrade cannot clean it up (different scope). -->
+           installers (v0.8.x/v0.9.0/v0.9.1/v0.9.2) left behind. COMMONDESKTOPFOLDER is set to
+           [%PUBLIC]\Desktop via SetProperty above so this cleanup works in per-user context. -->
       <Component Id="RemoveOldPublicDesktopShortcut" Directory="COMMONDESKTOPFOLDER" Guid="B2C3D4E5-F6A7-4B8C-9D0E-F1A2B3C4D5E6">
         <RemoveFile Id="RemoveOldPublicDesktopLnk" Name="MyLocalBackup.lnk" On="install" />
         <RegistryValue Root="HKCU" Key="Software\MyLocalBackup" Name="CleanedPublicShortcut" Type="integer" Value="1" KeyPath="yes" />
@@ -93,5 +99,4 @@
     </ComponentGroup>
   </Fragment>
 </Wix>
-
 
