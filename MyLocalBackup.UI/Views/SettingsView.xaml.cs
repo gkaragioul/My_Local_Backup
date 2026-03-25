@@ -237,8 +237,8 @@ namespace MyLocalBackup.UI.Views
                 {
                     // Use the actual running exe path so this works for both installed and portable builds
                     var exePath = Environment.ProcessPath ?? System.IO.Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                        "MyLocalBackup", "MyLocalBackup.UI.exe");
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "Programs", "MyLocalBackup", "MyLocalBackup.UI.exe");
                     key.SetValue("MyLocalBackup", $"\"{exePath}\" --minimized");
                 }
                 else

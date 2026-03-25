@@ -39,7 +39,10 @@ Both releases (source + releases repo) must be created. The app will only detect
 
 ## Version History
 
-Versions follow `0.8.X` pattern. Check last commit message or `.csproj` for current version.
+Versions follow `0.X.Y` pattern. Check last commit message or `.csproj` for current version.
+- v0.9.1: Switched installer to per-user (fixes in-app update ".NET Desktop Runtime" error)
+- v0.9.0: Parallel file processing, background retention, configurable exclusions
+- v0.8.x: Earlier releases (per-machine installer — superseded)
 
 ## Build Commands
 
@@ -58,10 +61,33 @@ Versions follow `0.8.X` pattern. Check last commit message or `.csproj` for curr
 - Target framework: .NET 9.0 (Windows)
 - Database: SQLite via Microsoft.Data.Sqlite
 - UI: WPF with dark-mode-only theme
-- Installer: WiX v5 Burn bundle EXE wrapping MSI (per-machine install to `%ProgramFiles%\MyLocalBackup`, requires admin)
+- Installer: WiX v5 Burn bundle EXE wrapping MSI — **per-user install** to `%LOCALAPPDATA%\Programs\MyLocalBackup` (NO admin/UAC required)
 - Hard link deduplication for backup storage (NTFS only)
-- Self-contained publish (bundles .NET runtime)
+- Self-contained publish (bundles .NET runtime — no separate .NET install required)
 - Update security: SHA256 hash required in release notes, verified before install
+
+## CRITICAL: Installer Architecture — Why Per-User (NEVER Change This)
+
+The MSI **must** stay `Scope="perUser"` (installs to `%LOCALAPPDATA%\Programs\MyLocalBackup`). **Never change this to per-machine.**
+
+**Why**: Per-machine installs require UAC elevation to write to `%ProgramFiles%`. The in-app updater runs the Burn bundle EXE from a hidden, non-interactive PowerShell process. When the bundle needs elevation, Windows must show a UAC prompt from that hidden context — this combination is unreliable and causes the installer to fail silently. The old app files get removed by MajorUpgrade but the new ones are never laid down, leaving the install broken. Result: "You must install .NET Desktop Runtime" error on relaunch.
+
+Per-user install eliminates ALL of this — no elevation, no UAC, `msiexec` and the Burn bundle run reliably in the background.
+
+**Other invariants that must not change:**
+- `UpgradeCode` in `Package.wxs` is `D1E2F3A4-B5C6-4D7E-8F9A-B0C1D2E3F4A5` — never change this (breaks upgrades)
+- Registry keys in shortcuts must use `Root="HKCU"` (per-user, not HKLM)
+- The EXE hash (not MSI hash) goes in GitHub release notes — the build script computes and prints the EXE hash
+- Upload the **EXE** (Burn bundle) to GitHub releases — not the MSI
+- The relaunch path fallback in `UpdateService.cs` must use `LocalApplicationData\Programs\MyLocalBackup` (not ProgramFiles)
+
+## Migration Note (Users Upgrading from v0.9.0 or Earlier)
+
+Versions before v0.9.1 used a per-machine install to `%ProgramFiles%\MyLocalBackup`. The new per-user installer cannot auto-remove that old install (different scope). Users should:
+1. Uninstall the old version via Windows Settings → Apps → MyLocalBackup
+2. Install the new version
+
+The in-app updater handles this gracefully: after installing the new per-user version, if the old exe path no longer exists, the relaunch falls back to `%LOCALAPPDATA%\Programs\MyLocalBackup\MyLocalBackup.UI.exe`.
 
 ## Update Checker Notes
 

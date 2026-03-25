@@ -1,4 +1,4 @@
-# MyLocalBackup (v0.9.0)
+# MyLocalBackup (v0.9.1)
 
 A free versioned local backup tool for Windows. Uses NTFS hard links for space-efficient incremental backups stored as full snapshots.
 
@@ -37,7 +37,7 @@ A free versioned local backup tool for Windows. Uses NTFS hard links for space-e
 
 - **Framework**: .NET 9 / WPF (Windows)
 - **Database**: SQLite via `Microsoft.Data.Sqlite` (WAL mode on local drives, exclusive mode on removable)
-- **Installer**: WiX v5 Burn bundle EXE wrapping MSI (per-machine install to `%ProgramFiles%\MyLocalBackup`)
+- **Installer**: WiX v5 Burn bundle EXE wrapping MSI (per-user install to `%LOCALAPPDATA%\Programs\MyLocalBackup` — no admin required)
 - **Self-contained**: Bundles the .NET runtime — no separate .NET install required
 
 ## Requirements

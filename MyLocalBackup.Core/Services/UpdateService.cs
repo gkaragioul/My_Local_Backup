@@ -372,11 +372,12 @@ namespace MyLocalBackup.Core.Services
                 {
                     var logPath = Path.Combine(Path.GetTempPath(), "mlb_install.log");
 
-                    // Use the current exe's location so this works regardless of install directory
+                    // Primary: relaunch from wherever the app is currently running.
+                    // Fallback: per-user install location (handles migration from old per-machine installs
+                    // where Environment.ProcessPath pointed to %ProgramFiles% which gets removed).
                     var appExePath = Environment.ProcessPath ?? Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                        "MyLocalBackup",
-                        "MyLocalBackup.UI.exe"
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "Programs", "MyLocalBackup", "MyLocalBackup.UI.exe"
                     );
                     var helperScript = Path.Combine(Path.GetTempPath(), $"mlb_relaunch_{Guid.NewGuid():N}.ps1");
 
@@ -388,12 +389,14 @@ namespace MyLocalBackup.Core.Services
                         $"$msi = '{installerPath.Replace("'", "''")}'",
                         $"$log = '{logPath.Replace("'", "''")}'",
                         $"$app = '{appExePath.Replace("'", "''")}'",
+                        "$fallback = \"$env:LOCALAPPDATA\\Programs\\MyLocalBackup\\MyLocalBackup.UI.exe\"",
                         "Start-Sleep -Seconds 2",
                         "$proc = Start-Process msiexec.exe -ArgumentList \"/i `\"$msi`\" /passive REBOOT=ReallySuppress /l*v `\"$log`\"\" -Wait -PassThru",
                         "if ($proc.ExitCode -ne 0) {",
                         "  Add-Content $log \"MSI exited with code $($proc.ExitCode)\"",
                         "}",
                         "if (Test-Path $app) { Start-Process $app }",
+                        "elseif (Test-Path $fallback) { Start-Process $fallback }",
                         "Remove-Item $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue"
                     };
 
@@ -411,12 +414,13 @@ namespace MyLocalBackup.Core.Services
                 }
                 else
                 {
-                    // EXE installer (Burn bundle) — same pattern as MSI: wait, then relaunch
+                    // EXE installer (Burn bundle) — same pattern as MSI: wait, then relaunch.
+                    // The MSI inside the bundle is per-user (no elevation needed), so Start-Process
+                    // -Wait correctly blocks until the full installation is complete.
                     var logPath = Path.Combine(Path.GetTempPath(), "mlb_install.log");
                     var appExePath = Environment.ProcessPath ?? Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                        "MyLocalBackup",
-                        "MyLocalBackup.UI.exe"
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "Programs", "MyLocalBackup", "MyLocalBackup.UI.exe"
                     );
                     var helperScript = Path.Combine(Path.GetTempPath(), $"mlb_relaunch_{Guid.NewGuid():N}.ps1");
 
@@ -425,12 +429,14 @@ namespace MyLocalBackup.Core.Services
                         $"$installer = '{installerPath.Replace("'", "''")}'",
                         $"$log = '{logPath.Replace("'", "''")}'",
                         $"$app = '{appExePath.Replace("'", "''")}'",
+                        "$fallback = \"$env:LOCALAPPDATA\\Programs\\MyLocalBackup\\MyLocalBackup.UI.exe\"",
                         "Start-Sleep -Seconds 2",
                         "$proc = Start-Process $installer -ArgumentList \"/passive /norestart /log `\"$log`\"\" -Wait -PassThru",
                         "if ($proc.ExitCode -ne 0) {",
                         "  Add-Content $log \"Installer exited with code $($proc.ExitCode)\"",
                         "}",
                         "if (Test-Path $app) { Start-Process $app }",
+                        "elseif (Test-Path $fallback) { Start-Process $fallback }",
                         "Remove-Item $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue"
                     };
 
