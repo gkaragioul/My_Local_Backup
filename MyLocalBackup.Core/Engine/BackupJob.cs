@@ -4,6 +4,7 @@ using MyLocalBackup.Core.Models;
 using MyLocalBackup.Core.Storage;
 using MyLocalBackup.Core.Data;
 using Microsoft.Data.Sqlite;
+using System.Collections.Concurrent;
 
 namespace MyLocalBackup.Core.Engine
 {
@@ -39,13 +40,12 @@ namespace MyLocalBackup.Core.Engine
         private long _processedFileCount;
         private volatile bool _hasErrors;
         private long _lastProgressReportTicks; // For throttling per-file progress callbacks
-        private readonly List<string> _failedFiles = new();
-        private readonly object _failedFilesLock = new();
+        private readonly ConcurrentBag<string> _failedFiles = new();
 
         // Public error state for callers (e.g., BackupScheduler)
         public bool HasErrors => _hasErrors;
-        public int ErrorCount { get { lock (_failedFilesLock) return _failedFiles.Count; } }
-        public IReadOnlyList<string> FailedFiles { get { lock (_failedFilesLock) return _failedFiles.ToArray(); } }
+        public int ErrorCount => _failedFiles.Count;
+        public IReadOnlyList<string> FailedFiles => _failedFiles.ToArray();
 
         // System folders to always exclude (case-insensitive match on directory name)
         private static readonly HashSet<string> SystemExclusions = new(StringComparer.OrdinalIgnoreCase)
@@ -364,7 +364,7 @@ namespace MyLocalBackup.Core.Engine
                 // Validate that files were actually backed up
                 long successCount = Interlocked.Read(ref _processedFileCount);
                 int errorCount;
-                lock (_failedFilesLock) { errorCount = _failedFiles.Count; }
+                errorCount = _failedFiles.Count;
 
                 if (successCount == 0 && errorCount == 0)
                 {
@@ -380,7 +380,7 @@ namespace MyLocalBackup.Core.Engine
                 {
                     Logger.Log($"--- {errorCount} file(s) failed during backup ---");
                     string[] failedList;
-                    lock (_failedFilesLock) { failedList = _failedFiles.ToArray(); }
+                    failedList = _failedFiles.ToArray();
                     // Log up to 50 failed files to avoid flooding the log
                     int logLimit = Math.Min(failedList.Length, 50);
                     for (int i = 0; i < logLimit; i++)
@@ -862,7 +862,7 @@ namespace MyLocalBackup.Core.Engine
 
                 // Couldn't preserve symlink - record as failed so user sees it
                 Logger.Log($"Skipping unpreservable symlink: {sourceFilePath}");
-                lock (_failedFilesLock) { _failedFiles.Add(sourceFilePath); }
+                _failedFiles.Add(sourceFilePath);
                 Interlocked.Increment(ref _processedFileCount);
                 return;
             }
@@ -1068,7 +1068,7 @@ namespace MyLocalBackup.Core.Engine
                         catch (Exception ex)
                         {
                             _hasErrors = true;
-                            lock (_failedFilesLock) { _failedFiles.Add(sourceFilePath); }
+                            _failedFiles.Add(sourceFilePath);
                             if (ex is not FileNotFoundException)
                                 Logger.Log($"Error backing up file {sourceFilePath}: {ex}");
                         }
@@ -1132,7 +1132,7 @@ namespace MyLocalBackup.Core.Engine
 
                     // Couldn't preserve directory symlink - record as failed so user sees it
                     Logger.Log($"Skipping unpreservable directory symlink: {subDir}");
-                    lock (_failedFilesLock) { _failedFiles.Add(subDir); }
+                    _failedFiles.Add(subDir);
                     continue;
                 }
 

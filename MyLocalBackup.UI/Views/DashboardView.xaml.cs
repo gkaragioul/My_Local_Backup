@@ -322,16 +322,18 @@ namespace MyLocalBackup.UI.Views
                     TxtBackupError.Text = data.error;
 
                     // Auto-dismiss error banner after 5 seconds
-                    StopAndClearTimer(ref _errorDismissTimer);
-                    _errorDismissTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+                    _errorDismissTimer ??= new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+                    _errorDismissTimer.Tick -= OnErrorDismissTimerTick;
                     _errorDismissTimer.Tick += OnErrorDismissTimerTick;
+                    _errorDismissTimer.Stop();
                     _errorDismissTimer.Start();
                 }
 
                 // Hide progress with delay
-                StopAndClearTimer(ref _hideTimer);
-                _hideTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+                _hideTimer ??= new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+                _hideTimer.Tick -= OnHideTimerTick;
                 _hideTimer.Tick += OnHideTimerTick;
+                _hideTimer.Stop();
                 _hideTimer.Start();
             });
         }
@@ -518,7 +520,7 @@ namespace MyLocalBackup.UI.Views
         {
             if (_countdownTimer == null)
             {
-                _countdownTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                _countdownTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
                 _countdownTimer.Tick += OnCountdownTimerTick;
             }
 

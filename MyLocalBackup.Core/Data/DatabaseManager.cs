@@ -18,8 +18,7 @@ namespace MyLocalBackup.Core.Data
             _useExclusiveMode = IsExternalDrive(dbPath);
             
             // Add default timeout (60s) to mitigate 'database is locked' errors
-            // We disable Pooling to ensure connections are truly closed when disposed.
-            _connectionString = $"Data Source={dbPath};Default Timeout=60;Pooling=False;";
+            _connectionString = $"Data Source={dbPath};Default Timeout=60;Pooling=True;Max Pool Size=5;";
             
             // Only clean up stale files for external drives
             if (_useExclusiveMode)
@@ -91,7 +90,7 @@ namespace MyLocalBackup.Core.Data
                     PRAGMA foreign_keys=ON;
                     PRAGMA cache_size=-8000;
                     PRAGMA temp_store=MEMORY;
-                    PRAGMA wal_autocheckpoint=100;
+                    PRAGMA wal_autocheckpoint=500;
                 ";
             }
             cmd.ExecuteNonQuery();
