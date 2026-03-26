@@ -18,7 +18,7 @@ namespace MyLocalBackup.Core.Data
             _useExclusiveMode = IsExternalDrive(dbPath);
             
             // Add default timeout (60s) to mitigate 'database is locked' errors
-            _connectionString = $"Data Source={dbPath};Default Timeout=60;Pooling=True;Max Pool Size=5;";
+            _connectionString = $"Data Source={dbPath};Default Timeout=60;Pooling=True;";
             
             // Only clean up stale files for external drives
             if (_useExclusiveMode)
