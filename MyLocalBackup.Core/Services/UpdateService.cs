@@ -42,21 +42,25 @@ namespace MyLocalBackup.Core.Services
             var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.7.0";
             _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MyLocalBackup", version));
             LoadCachedETag();
-            CleanupOrphanedTempScripts();
+            CleanupOrphanedTempFiles();
         }
 
         /// <summary>
-        /// Removes orphaned mlb_relaunch_*.ps1 temp scripts from previous failed update attempts.
+        /// Removes orphaned temp files from previous update attempts:
+        /// mlb_relaunch_*.ps1 (helper scripts) and mlb_*_MyLocalBackupSetup.* (downloaded installers).
         /// </summary>
-        private static void CleanupOrphanedTempScripts()
+        private static void CleanupOrphanedTempFiles()
         {
             try
             {
                 var tempDir = Path.GetTempPath();
-                foreach (var file in Directory.EnumerateFiles(tempDir, "mlb_relaunch_*.ps1"))
+                foreach (var pattern in new[] { "mlb_relaunch_*.ps1", "mlb_*_MyLocalBackupSetup.*" })
                 {
-                    try { File.Delete(file); }
-                    catch { /* File may be in use by a running update — skip */ }
+                    foreach (var file in Directory.EnumerateFiles(tempDir, pattern))
+                    {
+                        try { File.Delete(file); }
+                        catch { /* File may be in use by a running update — skip */ }
+                    }
                 }
             }
             catch { /* Non-critical cleanup — ignore errors */ }
@@ -296,7 +300,7 @@ namespace MyLocalBackup.Core.Services
             return null;
         }
 
-        public async Task DownloadInstallerAsync(string downloadUrl, string destinationPath, IProgress<double> progress, string? expectedSha256 = null)
+        public async Task DownloadInstallerAsync(string downloadUrl, string destinationPath, IProgress<double> progress, string? expectedSha256 = null, CancellationToken externalToken = default)
         {
             if (_disposed) throw new ObjectDisposedException(nameof(UpdateService));
 
@@ -305,9 +309,13 @@ namespace MyLocalBackup.Core.Services
                 throw new InvalidOperationException(
                     "Update rejected: no SHA256 hash found in release notes.\n\nThis may indicate a tampered update source.");
 
+            // Combine internal and external cancellation tokens
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, externalToken);
+            var ct = linkedCts.Token;
+
             try
             {
-                using var response = await _httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, _cts.Token);
+                using var response = await _httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, ct);
                 response.EnsureSuccessStatusCode();
 
                 var totalBytes = response.Content.Headers.ContentLength ?? -1L;
@@ -322,7 +330,8 @@ namespace MyLocalBackup.Core.Services
 
                     while (true)
                     {
-                        var read = await contentStream.ReadAsync(buffer, 0, buffer.Length);
+                        ct.ThrowIfCancellationRequested();
+                        var read = await contentStream.ReadAsync(buffer, 0, buffer.Length, ct);
                         if (read == 0)
                         {
                             sha256.TransformFinalBlock(buffer, 0, 0);
@@ -330,7 +339,7 @@ namespace MyLocalBackup.Core.Services
                         }
 
                         sha256.TransformBlock(buffer, 0, read, null, 0);
-                        await fileStream.WriteAsync(buffer, 0, read);
+                        await fileStream.WriteAsync(buffer, 0, read, ct);
 
                         totalRead += read;
                         if (canReportProgress)

@@ -321,18 +321,22 @@ namespace MyLocalBackup.UI.Views
                     BackupErrorBanner.Visibility = Visibility.Visible;
                     TxtBackupError.Text = data.error;
 
-                    // Auto-dismiss error banner after 5 seconds
-                    _errorDismissTimer ??= new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
-                    _errorDismissTimer.Tick -= OnErrorDismissTimerTick;
-                    _errorDismissTimer.Tick += OnErrorDismissTimerTick;
+                    // Auto-dismiss error banner after 5 seconds (reuse existing timer)
+                    if (_errorDismissTimer == null)
+                    {
+                        _errorDismissTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+                        _errorDismissTimer.Tick += OnErrorDismissTimerTick;
+                    }
                     _errorDismissTimer.Stop();
                     _errorDismissTimer.Start();
                 }
 
-                // Hide progress with delay
-                _hideTimer ??= new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
-                _hideTimer.Tick -= OnHideTimerTick;
-                _hideTimer.Tick += OnHideTimerTick;
+                // Hide progress with delay (reuse existing timer)
+                if (_hideTimer == null)
+                {
+                    _hideTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+                    _hideTimer.Tick += OnHideTimerTick;
+                }
                 _hideTimer.Stop();
                 _hideTimer.Start();
             });
@@ -364,16 +368,16 @@ namespace MyLocalBackup.UI.Views
 
         private void OnErrorDismissTimerTick(object? sender, EventArgs e)
         {
-            if (_isUnloaded) { StopAndClearTimer(ref _errorDismissTimer); return; }
+            _errorDismissTimer?.Stop();
+            if (_isUnloaded) return;
             BackupErrorBanner.Visibility = Visibility.Collapsed;
-            StopAndClearTimer(ref _errorDismissTimer);
         }
 
         private void OnHideTimerTick(object? sender, EventArgs e)
         {
-            if (_isUnloaded) { StopAndClearTimer(ref _hideTimer); return; }
+            _hideTimer?.Stop();
+            if (_isUnloaded) return;
             ProgressSection.Visibility = Visibility.Collapsed;
-            StopAndClearTimer(ref _hideTimer);
         }
 
         private void BtnPause_Click(object sender, RoutedEventArgs e)
@@ -395,7 +399,7 @@ namespace MyLocalBackup.UI.Views
         private void BtnCloseError_Click(object sender, RoutedEventArgs e)
         {
             BackupErrorBanner.Visibility = Visibility.Collapsed;
-            StopAndClearTimer(ref _errorDismissTimer);
+            _errorDismissTimer?.Stop();
         }
 
         private void BtnBackupNow_Click(object sender, RoutedEventArgs e)

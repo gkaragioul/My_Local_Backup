@@ -95,6 +95,11 @@ namespace MyLocalBackup.UI
             // Check if a previous update failed (MSI didn't install, or app crashed after update)
             if (_updateService.CheckPendingUpdateFailed(out var expectedVer))
             {
+                // Dismiss this version so the initial auto-check below doesn't
+                // immediately show a second "new version available" dialog.
+                if (expectedVer != null)
+                    _updateService.DismissVersion(expectedVer);
+
                 var prevInfo = MyLocalBackup.Core.Services.UpdateService.GetPreviousVersionInfo();
                 if (prevInfo.HasValue)
                 {
@@ -174,7 +179,7 @@ namespace MyLocalBackup.UI
                     TxtVersion.Text = $"Downloading: {p:F0}%";
                 });
 
-                await _updateService.DownloadInstallerAsync(info.DownloadUrl, tempPath, progress, info.ExpectedSha256);
+                await _updateService.DownloadInstallerAsync(info.DownloadUrl, tempPath, progress, info.ExpectedSha256, _updateCts.Token);
 
                 this.Title = prevTitle;
                 TxtVersion.Text = "Installing update...";
@@ -189,6 +194,17 @@ namespace MyLocalBackup.UI
                 CleanupResources();
                 System.Windows.Application.Current.Shutdown();
                 return;
+            }
+            catch (OperationCanceledException)
+            {
+                // User cancelled the download — restore UI silently
+                this.Title = prevTitle;
+                TxtVersion.Text = prevVersionText;
+                _isUpdating = false;
+                // Replace the cancelled token so future checks still work
+                _updateCts.Dispose();
+                _updateCts = new System.Threading.CancellationTokenSource();
+                _updateTimer?.Start();
             }
             catch (Exception ex)
             {
@@ -222,7 +238,14 @@ namespace MyLocalBackup.UI
         {
             if (_isUpdating)
             {
-                // Don't allow close/hide during update — user must wait for download to finish
+                // Ask user if they want to cancel the in-progress download
+                var result = System.Windows.MessageBox.Show(
+                    "An update is being downloaded. Cancel the download?",
+                    "Download In Progress", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (result == MessageBoxResult.Yes)
+                {
+                    try { _updateCts.Cancel(); } catch { }
+                }
                 e.Cancel = true;
                 return;
             }
