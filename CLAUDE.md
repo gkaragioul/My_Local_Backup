@@ -26,8 +26,7 @@ When creating a new release:
    - `gh release create vX.Y.Z --repo georgekgr12/MyLocalBackup ...`
    - `gh release create vX.Y.Z --repo georgekgr12/MyLocalBackup-releases ... Staging/MyLocalBackup_Setup/MyLocalBackupSetup.msi#MyLocalBackupSetup.msi Staging/MyLocalBackup_Setup/MyLocalBackupSetup.exe#MyLocalBackupSetup.exe`
 5. **Include the MSI SHA256 in release notes** (NOT the EXE hash): Format: `SHA256: <hash>`. The build script prints both hashes and clearly labels which is which — use the MSI one. The in-app updater downloads the MSI and verifies this hash.
-6. **Update README.md**: Update the version in the heading (`# MyLocalBackup (vX.Y.Z)`) and ensure the feature list, tech stack, and descriptions reflect any recent changes. Commit and push the README update.
-7. **Update repo descriptions** if the release includes significant new functionality: update the GitHub repo description/about via `gh repo edit` if appropriate.
+6. **Update repo descriptions** if the release includes significant new functionality: update the GitHub repo description/about via `gh repo edit` if appropriate.
 
 Both releases (source + releases repo) must be created. The app will only detect updates from the releases repo.
 
