@@ -342,9 +342,33 @@ namespace MyLocalBackup.Core.Engine
                     return;
                 }
 
+                CancellationTokenSource? driveMonitorCts = null;
                 try
                 {
                     var dest = _config.Destination;
+
+                    // Monitor destination drive — cancel backup if drive is removed
+                    driveMonitorCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+                    _ = Task.Run(async () =>
+                    {
+                        var driveRoot = Path.GetPathRoot(dest.RootPath);
+                        if (string.IsNullOrEmpty(driveRoot)) return;
+                        while (!driveMonitorCts.Token.IsCancellationRequested)
+                        {
+                            try
+                            {
+                                await Task.Delay(2000, driveMonitorCts.Token);
+                                if (!Directory.Exists(driveRoot))
+                                {
+                                    Logger.Log("Destination drive removed during backup — aborting.");
+                                    lock (_ctsLock) { _backupCts?.Cancel(); }
+                                    break;
+                                }
+                            }
+                            catch (OperationCanceledException) { break; }
+                        }
+                    }, driveMonitorCts.Token);
+
                     var job = new BackupJob(_config, _db, dest.RootPath);
                     await Task.Run(() => job.Execute((p, t) =>
                     {
@@ -365,6 +389,10 @@ namespace MyLocalBackup.Core.Engine
 
                         InvokeOnSyncContext(() => ProgressUpdated?.Invoke(this, (p, t)));
                     }, token), token);
+
+                    // Stop drive monitor now that backup is done
+                    driveMonitorCts.Cancel();
+                    driveMonitorCts.Dispose();
 
                     // Report partial errors from the job
                     if (job.HasErrors)
@@ -387,12 +415,14 @@ namespace MyLocalBackup.Core.Engine
                 }
                 catch (OperationCanceledException)
                 {
-                    lastError = "Backup canceled by user.";
+                    try { driveMonitorCts?.Cancel(); driveMonitorCts?.Dispose(); } catch { }
+                    lastError = "Backup canceled.";
                     Logger.Log(lastError);
                     allSuccess = false;
                 }
                 catch (Exception ex)
                 {
+                    try { driveMonitorCts?.Cancel(); driveMonitorCts?.Dispose(); } catch { }
                     lastError = $"Backup to {_config.Destination.Name} failed: {ex.Message}";
                     Logger.Log($"Backup to {_config.Destination.Name} failed: {ex}");
                     allSuccess = false;

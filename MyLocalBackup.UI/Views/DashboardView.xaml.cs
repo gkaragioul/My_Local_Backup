@@ -254,6 +254,7 @@ namespace MyLocalBackup.UI.Views
 
                 ProgressSection.Visibility = Visibility.Visible;
                 ProgressSection.Opacity = 1; // Force opacity
+                TxtDriveWarning.Visibility = Visibility.Visible;
 
                 ShowRunningActions();
                 BtnPause.Content = "Pause";
@@ -378,6 +379,7 @@ namespace MyLocalBackup.UI.Views
             _hideTimer?.Stop();
             if (_isUnloaded) return;
             ProgressSection.Visibility = Visibility.Collapsed;
+            TxtDriveWarning.Visibility = Visibility.Collapsed;
         }
 
         private void BtnPause_Click(object sender, RoutedEventArgs e)

@@ -141,7 +141,11 @@ namespace MyLocalBackup.Core.Engine
                     if (chunkStopwatch.Elapsed.TotalSeconds > FileOperationTimeoutSeconds)
                         throw new TimeoutException($"File read stalled for {FileOperationTimeoutSeconds}s: {fileName}");
 
-                    if (bytesRead == 0) break;
+                    if (bytesRead == 0)
+                    {
+                        targetStream.Flush(flushToDisk: true);
+                        break;
+                    }
 
                     targetStream.Write(buffer, 0, bytesRead);
                     totalBytesCopied += bytesRead;
@@ -197,6 +201,7 @@ namespace MyLocalBackup.Core.Engine
                 using var sourceStream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, bufferSize: 65536, FileOptions.SequentialScan);
                 using var targetStream = new FileStream(targetPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 65536);
                 sourceStream.CopyTo(targetStream, bufferSize: 65536);
+                targetStream.Flush(flushToDisk: true);
             }
         }
 

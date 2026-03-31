@@ -103,6 +103,8 @@
                         <TextBlock x:Name="TxtProgressTask" Text="Analyzing files..." FontSize="13" Foreground="{DynamicResource TextMutedBrush}"/>
                     </DockPanel>
                     <ProgressBar x:Name="BackupProgressBar" Height="6" BorderThickness="0" Background="{DynamicResource BorderBrush}" Foreground="{DynamicResource PrimaryBrush}"/>
+                    <TextBlock x:Name="TxtDriveWarning" Text="Do not remove the backup drive while backup is in progress"
+                               FontSize="11" Foreground="#FFCC00" Margin="0,6,0,0" Visibility="Collapsed"/>
                 </StackPanel>
             </StackPanel>
         </Border>
