@@ -236,7 +236,7 @@ namespace MyLocalBackup.UI
 
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
-            if (_isUpdating)
+            if (_isUpdating && !_allowShutdown)
             {
                 // Ask user if they want to cancel the in-progress download
                 var result = System.Windows.MessageBox.Show(
