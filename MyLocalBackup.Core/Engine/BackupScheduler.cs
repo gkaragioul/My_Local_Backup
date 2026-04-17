@@ -313,7 +313,6 @@ namespace MyLocalBackup.Core.Engine
                 token = _backupCts.Token;
             }
 
-            InvokeOnSyncContext(() => BackupStarted?.Invoke(this, "Starting Backup..."));
             bool allSuccess = true;
             string? lastError = null;
             IReadOnlyList<string>? failedFiles = null;
@@ -341,6 +340,11 @@ namespace MyLocalBackup.Core.Engine
                     allSuccess = false;
                     return;
                 }
+
+                // Fire the Started event only after pre-flight validation passes — otherwise
+                // the tray notification and dashboard flash "Backing up now" for a backup
+                // that never actually runs (e.g., no destination drive configured).
+                InvokeOnSyncContext(() => BackupStarted?.Invoke(this, "Starting Backup..."));
 
                 CancellationTokenSource? driveMonitorCts = null;
                 try

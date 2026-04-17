@@ -21,7 +21,7 @@
     <SetProperty Id="COMMONDESKTOPFOLDER" Before="CostInitialize" Sequence="both"
                  Value="[%PUBLIC]\Desktop" />
 
-        <Feature Id="MainFeature" Title="MyLocalBackup" Level="1">
+            <Feature Id="MainFeature" Title="MyLocalBackup" Level="1">
       <ComponentGroupRef Id="AppFiles" />
       <ComponentGroupRef Id="AppFiles_cs" />
       <ComponentGroupRef Id="AppFiles_de" />
@@ -99,4 +99,5 @@
     </ComponentGroup>
   </Fragment>
 </Wix>
+
 
