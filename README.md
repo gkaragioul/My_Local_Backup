@@ -74,3 +74,5 @@ PackagePortable.ps1       Portable ZIP packaging script
 Freeware — see [About dialog](MyLocalBackup.UI/MainWindow.xaml) in the app or the license text below.
 
 Copyright (c) 2026 George Karagioules. All rights reserved. This software is provided free of charge for personal and commercial use. You may NOT modify, reverse-engineer, redistribute, or sell this software or any portion of it without prior written permission from the author. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+
+For licensing inquiries (modification, redistribution, or resale rights), see the Contact section of https://github.com/gkaragioul.

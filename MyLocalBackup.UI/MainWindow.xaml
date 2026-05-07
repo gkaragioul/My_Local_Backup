@@ -163,7 +163,8 @@
                                             Copyright © 2026 George Karagioules. All rights reserved.&#x0a;&#x0a;
                                             This software is provided free of charge for personal and commercial use. You may download and use it at no cost.&#x0a;&#x0a;
                                             You may NOT modify, reverse-engineer, redistribute, or sell this software or any portion of it without prior written permission from the author.&#x0a;&#x0a;
-                                            THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. USE AS A SUPPLEMENT TO OTHER BACKUP STRATEGIES — THE DEVELOPER IS NOT LIABLE FOR DATA LOSS.
+                                            THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. USE AS A SUPPLEMENT TO OTHER BACKUP STRATEGIES — THE DEVELOPER IS NOT LIABLE FOR DATA LOSS.&#x0a;&#x0a;
+                                            For licensing inquiries (modification, redistribution, or resale rights), see the Contact section of https://github.com/gkaragioul.
                                         </TextBlock>
                                     </StackPanel>
                                 </ScrollViewer>
