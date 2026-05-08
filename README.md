@@ -4,7 +4,7 @@ https://github.com/user-attachments/assets/7ac7e0a2-d48d-4335-8729-e0dc80d09bc0
 
 <div align="center">
 
-<h1>MyLocalBackup</h1>
+<h1>MyLocalBackup (v0.9.10)</h1>
 
 <hr>
 
@@ -14,7 +14,7 @@ https://github.com/user-attachments/assets/7ac7e0a2-d48d-4335-8729-e0dc80d09bc0
 </p>
 
 <p>
-  <a href="https://github.com/gkaragioul/MyLocalBackup-releases/releases/latest">Download</a> &bull;
+  <a href="https://github.com/gkaragioul/My_Local_Backup/releases/latest">Download</a> &bull;
   <a href="#features">Features</a> &bull;
   <a href="#requirements">Requirements</a> &bull;
   <a href="#building">Building</a> &bull;
@@ -55,6 +55,7 @@ https://github.com/user-attachments/assets/7ac7e0a2-d48d-4335-8729-e0dc80d09bc0
 - Checks GitHub Releases every 12 hours.
 - One-click download and install. SHA256 hash verified before installing.
 - Rollback available if an update fails.
+- Updates now come from this repository's Releases tab; no secondary releases repository is required.
 
 ## Tech Stack
 
@@ -80,7 +81,7 @@ dotnet build MyLocalBackup.UI/MyLocalBackup.UI.csproj
 powershell -ExecutionPolicy Bypass -File release-build.ps1 -Version X.Y.Z
 ```
 
-The script handles: publish, regenerate Files.wxs, MSI build, Burn bundle EXE build, copy to Desktop. The SHA256 hash is printed for inclusion in release notes.
+The script handles: publish, regenerate Files.wxs, MSI build, Burn bundle EXE build, copy to Desktop. The MSI SHA256 hash is printed for inclusion in release notes.
 
 ## Project Structure
 

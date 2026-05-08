@@ -171,4 +171,4 @@ Write-Host ""
 Write-Host "Include the MSI SHA256 in your GitHub release notes (used by in-app updater):" -ForegroundColor Yellow
 Write-Host "SHA256: $msiHash" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Upload to GitHub releases repo: MyLocalBackupSetup.msi AND MyLocalBackupSetup.exe" -ForegroundColor Yellow
+Write-Host "Upload to GitHub Releases: MyLocalBackupSetup.msi AND MyLocalBackupSetup.exe" -ForegroundColor Yellow

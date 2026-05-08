@@ -18,8 +18,8 @@ namespace MyLocalBackup.Core.Services
 
     public class UpdateService : IDisposable
     {
-        private const string RepoOwner = "georgekgr12";
-        private const string RepoName = "MyLocalBackup-releases";
+        private const string RepoOwner = "karagioules";
+        private const string RepoName = "My_Local_Backup";
         private const string GitHubApiUrl = $"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases/latest";
 
         private static readonly string AppDataDir = Path.Combine(
