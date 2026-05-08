@@ -43,6 +43,7 @@ When creating a new release:
 
 Versions follow the `0.X.Y` pattern. Check the latest tag or `.csproj` for current version.
 
+- v0.9.11: Test release for validating main-repo auto-updates.
 - v0.9.10: Switch in-app updates to the main repo Releases tab.
 - v0.9.9: Fix tray "Backing up now" notification with no destination drive.
 - v0.9.3: Fix duplicate shortcut (`COMMONDESKTOPFOLDER` SetProperty) and switch in-app updates to MSI.
