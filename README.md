@@ -4,7 +4,7 @@ https://github.com/user-attachments/assets/7ac7e0a2-d48d-4335-8729-e0dc80d09bc0
 
 <div align="center">
 
-<h1>MyLocalBackup (v0.9.11)</h1>
+<h1>MyLocalBackup</h1>
 
 <hr>
 
