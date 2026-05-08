@@ -2,9 +2,28 @@
 
 https://github.com/user-attachments/assets/7ac7e0a2-d48d-4335-8729-e0dc80d09bc0
 
-# MyLocalBackup
+<div align="center">
 
-A free versioned local backup tool for Windows. Uses NTFS hard links for space-efficient incremental backups stored as full snapshots.
+<h1>MyLocalBackup</h1>
+
+<hr>
+
+<p>
+  <strong>Free versioned local backups for Windows. Space-efficient snapshots with one-click restore.</strong><br>
+  <em>NTFS hard-link deduplication keeps backup history compact. Built for local drives, removable drives, and everyday Windows workstations.</em>
+</p>
+
+<p>
+  <a href="https://github.com/gkaragioul/MyLocalBackup-releases/releases/latest">Download</a> &bull;
+  <a href="#features">Features</a> &bull;
+  <a href="#requirements">Requirements</a> &bull;
+  <a href="#building">Building</a> &bull;
+  <a href="#license">License</a>
+</p>
+
+<hr>
+
+</div>
 
 ## Features
 
