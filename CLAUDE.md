@@ -6,9 +6,9 @@ MyLocalBackup is a free versioned local backup tool for Windows (freeware). No a
 
 ## GitHub Account & Repository
 
-- **Owner**: `karagioules`
-- **Source code and releases repo**: `karagioules/My_Local_Backup`
-- **Update endpoint**: `https://api.github.com/repos/karagioules/My_Local_Backup/releases/latest`
+- **Owner**: `georgekgr12`
+- **Source code and releases repo**: `georgekgr12/My_Local_Backup`
+- **Update endpoint**: `https://api.github.com/repos/georgekgr12/My_Local_Backup/releases/latest`
 
 The app uses the main repo's Releases tab. There is no secondary releases repository.
 
@@ -28,7 +28,7 @@ When creating a new release:
    - `git commit`
    - `git push origin main`
 5. Create the GitHub release in the main repo:
-   - `gh release create vX.Y.Z --repo karagioules/My_Local_Backup ... Staging/MyLocalBackup_Setup/MyLocalBackupSetup.msi#MyLocalBackupSetup.msi Staging/MyLocalBackup_Setup/MyLocalBackupSetup.exe#MyLocalBackupSetup.exe`
+   - `gh release create vX.Y.Z --repo georgekgr12/My_Local_Backup ... Staging/MyLocalBackup_Setup/MyLocalBackupSetup.msi#MyLocalBackupSetup.msi Staging/MyLocalBackup_Setup/MyLocalBackupSetup.exe#MyLocalBackupSetup.exe`
 6. Include the **MSI SHA256** in release notes, not the EXE hash. Format: `SHA256: <hash>`. The in-app updater downloads the MSI and verifies this hash.
 7. Update the repo description/about via `gh repo edit` if the release includes significant new functionality.
 
