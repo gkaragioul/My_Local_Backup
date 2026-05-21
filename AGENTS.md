@@ -43,6 +43,7 @@ When creating a new release:
 
 Versions follow the `0.X.Y` pattern. Check the latest tag or `.csproj` for current version.
 
+- v0.9.14: Test release for validating update discovery from v0.9.13.
 - v0.9.13: Point updater and release links at `gkaragioul/My_Local_Backup`.
 - v0.9.12: Assisted update test release with a real version-bumped installer.
 - v0.9.11: Test release for validating main-repo auto-updates.
