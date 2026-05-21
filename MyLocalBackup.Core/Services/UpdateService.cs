@@ -18,7 +18,7 @@ namespace MyLocalBackup.Core.Services
 
     public class UpdateService : IDisposable
     {
-        private const string RepoOwner = "georgekgr12";
+        private const string RepoOwner = "gkaragioul";
         private const string RepoName = "My_Local_Backup";
         private const string GitHubApiUrl = $"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases/latest";
 
@@ -28,7 +28,7 @@ namespace MyLocalBackup.Core.Services
         private static readonly string PendingUpdateFile = Path.Combine(AppDataDir, "pending_update.txt");
         private static readonly string PreviousVersionFile = Path.Combine(AppDataDir, "previous_version.txt");
 
-        private static readonly string ETagFile = Path.Combine(AppDataDir, "github_etag.txt");
+        private static readonly string ETagFile = Path.Combine(AppDataDir, $"github_etag_{RepoOwner}_{RepoName}.txt");
 
         private readonly HttpClient _httpClient;
         private readonly CancellationTokenSource _cts = new();
