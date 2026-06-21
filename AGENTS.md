@@ -8,9 +8,7 @@ MyLocalBackup is a free versioned local backup tool for Windows (freeware). No a
 
 - **Owner**: `gkaragioul`
 - **Source code and releases repo**: `gkaragioul/My_Local_Backup`
-- **Update endpoint**: `https://api.github.com/repos/gkaragioul/My_Local_Backup/releases/latest`
-
-The app uses the main repo's Releases tab. There is no secondary releases repository.
+- Updates are distributed through the main repo's GitHub Releases tab. The app opens the latest release page; it does not check, download, verify, or run installers itself.
 
 ## Release Process
 
@@ -21,15 +19,15 @@ When creating a new release:
 1. Bump the version in `MyLocalBackup.UI/MyLocalBackup.UI.csproj` (`<Version>` tag).
 2. Run the release build script: `powershell -ExecutionPolicy Bypass -File release-build.ps1 -Version X.Y.Z`
    - This handles publish, Files.wxs regeneration, MSI build, Burn bundle EXE build, and copying the EXE to Desktop.
-   - The script prints both hashes and clearly labels them.
-3. Update `README.md`: update the version in the heading and ensure feature list, tech stack, and descriptions reflect recent changes.
+   - The script prints both hashes for release verification.
+3. Update `README.md` so features, tech stack, and descriptions reflect recent changes.
 4. Commit and push:
    - `git add` changed files
    - `git commit`
    - `git push origin main`
 5. Create the GitHub release in the main repo:
-   - `gh release create vX.Y.Z --repo gkaragioul/My_Local_Backup ... Staging/MyLocalBackup_Setup/MyLocalBackupSetup.msi#MyLocalBackupSetup.msi Staging/MyLocalBackup_Setup/MyLocalBackupSetup.exe#MyLocalBackupSetup.exe`
-6. Include the **MSI SHA256** in release notes, not the EXE hash. Format: `SHA256: <hash>`. The in-app updater downloads the MSI and verifies this hash.
+   - `gh release create vX.Y.Z --repo gkaragioul/My_Local_Backup ... Staging/MyLocalBackup_Setup/MyLocalBackupSetup.exe#MyLocalBackupSetup.exe Staging/MyLocalBackup_Setup/MyLocalBackupSetup.msi#MyLocalBackupSetup.msi`
+6. Include EXE and MSI SHA256 hashes in release notes.
 7. Update the repo description/about via `gh repo edit` if the release includes significant new functionality.
 
 ## Critical Rules
@@ -38,11 +36,13 @@ When creating a new release:
 - Never run `msiexec` or installer commands. The build script copies the EXE to Desktop.
 - If `Files.wxs` is stale, the release script auto-regenerates it.
 - No obfuscation: source is publicly visible, but the project is freeware, not open-source.
+- Do not add an in-app updater, background update checker, installer downloader, or hidden installer launcher.
 
 ## Version History
 
 Versions follow the `0.X.Y` pattern. Check the latest tag or `.csproj` for current version.
 
+- v0.9.15: Remove assisted in-app updater; updates are manual through GitHub Releases.
 - v0.9.14: Test release for validating update discovery from v0.9.13.
 - v0.9.13: Point updater and release links at `gkaragioul/My_Local_Backup`.
 - v0.9.12: Assisted update test release with a real version-bumped installer.
@@ -62,7 +62,7 @@ Versions follow the `0.X.Y` pattern. Check the latest tag or `.csproj` for curre
 
 ## Project Structure
 
-- `MyLocalBackup.Core/` - Backup engine, database, configuration, models, services
+- `MyLocalBackup.Core/` - Backup engine, database, configuration, models
 - `MyLocalBackup.UI/` - WPF desktop application
 - `Staging/MyLocalBackup_Setup/` - WiX source files (`Package.wxs`, `Files.wxs`, `Bundle.wxs`)
 - `release-build.ps1` - Automated release build script
@@ -76,30 +76,22 @@ Versions follow the `0.X.Y` pattern. Check the latest tag or `.csproj` for curre
 - Install scope: per-user to `%LOCALAPPDATA%\Programs\MyLocalBackup`, no admin/UAC required
 - Hard link deduplication for backup storage (NTFS only)
 - Self-contained publish bundles the .NET runtime
-- Update security: SHA256 hash required in release notes and verified before install
+- Updates are manual: users download the latest installer from GitHub Releases and run it.
 
 ## Installer Architecture - Per-User Only
 
 The MSI must stay `Scope="perUser"`. Never change this to per-machine.
 
-Per-machine installs require UAC elevation to write to `%ProgramFiles%`. The in-app updater runs from a hidden, non-interactive PowerShell process, so elevation prompts are unreliable and can leave the install broken. Per-user install avoids elevation and keeps background updates reliable.
+Per-user installs avoid UAC and keep the upgrade path predictable. Newer installers replace the existing per-user install through WiX `MajorUpgrade`.
 
 Other invariants:
 
 - `UpgradeCode` in `Package.wxs` is `D1E2F3A4-B5C6-4D7E-8F9A-B0C1D2E3F4A5`; never change it.
 - Registry keys in shortcuts must use `Root="HKCU"`, not HKLM.
-- The MSI hash, not the EXE hash, goes in GitHub release notes.
-- Upload both MSI and EXE to the main repo GitHub release. MSI is used by in-app updater; EXE is for fresh installs.
-- The relaunch path fallback in `UpdateService.cs` must use `LocalApplicationData\Programs\MyLocalBackup`, not ProgramFiles.
+- Upload the EXE installer to the main repo GitHub release for users to download manually. Uploading the MSI as a secondary asset is acceptable for parity with older releases.
 
 ## Migration Note
 
 Versions before v0.9.1 used a per-machine install to `%ProgramFiles%\MyLocalBackup`. The new per-user installer cannot auto-remove that old install. Users should uninstall the old version via Windows Settings > Apps > MyLocalBackup, then install the new version.
 
-Older versions that still pointed at the removed secondary releases repo cannot discover new main-repo releases in-app. Those users need to install v0.9.10 or later manually once; future updates will then come from the main repo.
-
-## Update Checker Notes
-
-- `UpdateService.cs` compares only Major.Minor.Build (3-part) to handle GitHub 3-part tags vs assembly 4-part versions.
-- SHA256 is extracted from release notes using regex `SHA256:\s*([a-fA-F0-9]{64})`.
-- If no SHA256 is found in release notes, the download is rejected.
+Older versions that still pointed at the removed secondary releases repo cannot discover new main-repo releases in-app. Those users need to install the latest GitHub Releases installer manually.

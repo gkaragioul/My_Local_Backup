@@ -52,10 +52,9 @@ https://github.com/user-attachments/assets/7ac7e0a2-d48d-4335-8729-e0dc80d09bc0
 - **Notifications**: Toast-style notification when a background backup starts (configurable).
 
 ### Updates
-- Checks GitHub Releases every 12 hours.
-- One-click download and install. SHA256 hash verified before installing.
-- Rollback available if an update fails.
-- Updates now come from this repository's Releases tab; no secondary releases repository is required.
+- Updates are published through this repository's GitHub Releases tab.
+- Download the latest `MyLocalBackupSetup.exe` installer and run it manually.
+- Newer installers replace the existing per-user install when the version number increases.
 
 ## Tech Stack
 
@@ -81,12 +80,12 @@ dotnet build MyLocalBackup.UI/MyLocalBackup.UI.csproj
 powershell -ExecutionPolicy Bypass -File release-build.ps1 -Version X.Y.Z
 ```
 
-The script handles: publish, regenerate Files.wxs, MSI build, Burn bundle EXE build, copy to Desktop. The MSI SHA256 hash is printed for inclusion in release notes.
+The script handles: publish, regenerate Files.wxs, MSI build, Burn bundle EXE build, and copy the installer to Desktop. Hashes are printed for release verification.
 
 ## Project Structure
 
 ```
-MyLocalBackup.Core/       Backup engine, database, configuration, models, services
+MyLocalBackup.Core/       Backup engine, database, configuration, models
 MyLocalBackup.UI/         WPF desktop application
 Staging/                  WiX MSI + Burn bundle EXE packaging
 release-build.ps1         Automated release build script

@@ -181,7 +181,7 @@
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock x:Name="TxtVersion" Text="Version --" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center"/>
                             <Separator Width="1" Height="10" Background="{DynamicResource BorderBrush}" Margin="10,0"/>
-                            <Button x:Name="BtnCheckUpdates" Content="Check for Updates" Style="{StaticResource FooterLinkStyle}" Click="BtnCheckUpdates_Click"/>
+                            <Button x:Name="BtnOpenReleases" Content="GitHub Releases" Style="{StaticResource FooterLinkStyle}" Click="BtnOpenReleases_Click"/>
                             <Separator Width="1" Height="10" Background="{DynamicResource BorderBrush}" Margin="10,0"/>
                             <Button Content="About" Style="{StaticResource FooterLinkStyle}" Click="BtnShowAbout_Click"/>
                         </StackPanel>
