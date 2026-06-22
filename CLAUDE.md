@@ -2,7 +2,7 @@
 
 ## Overview
 
-MyLocalBackup is a free versioned local backup tool for Windows (freeware). No activation, no trial, completely free to use. Source code is visible but not open-source: no rights to modify, redistribute, or sell.
+MyLocalBackup is an open-source, MIT-licensed versioned local backup tool for Windows. No activation, no trial, completely free to use, modify, redistribute, and sell under the MIT License terms.
 
 ## GitHub Account & Repository
 
@@ -35,13 +35,14 @@ When creating a new release:
 - Never install, uninstall, or run the MSI/EXE yourself. The user handles installer execution on their machine.
 - Never run `msiexec` or installer commands. The build script copies the EXE to Desktop.
 - If `Files.wxs` is stale, the release script auto-regenerates it.
-- No obfuscation: source is publicly visible, but the project is freeware, not open-source.
+- No obfuscation: source is open source under the MIT License. Third-party dependencies and build tools keep their own licenses.
 - Do not add an in-app updater, background update checker, installer downloader, or hidden installer launcher.
 
 ## Version History
 
 Versions follow the `0.X.Y` pattern. Check the latest tag or `.csproj` for current version.
 
+- v0.9.16: Convert project source and installer EULA to the MIT License; remove vendored WiX extension from source control.
 - v0.9.15: Remove assisted in-app updater; updates are manual through GitHub Releases.
 - v0.9.14: Test release for validating update discovery from v0.9.13.
 - v0.9.13: Point updater and release links at `gkaragioul/My_Local_Backup`.

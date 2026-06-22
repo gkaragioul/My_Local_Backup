@@ -23,7 +23,7 @@ Write-Host "=== MyLocalBackup Release Build v$Version ===" -ForegroundColor Cyan
 # Step 1: Publish
 Write-Host "`n[1/5] Publishing..." -ForegroundColor Yellow
 if (Test-Path $publishDir) { Remove-Item $publishDir -Recurse -Force }
-dotnet publish "$root/MyLocalBackup.UI/MyLocalBackup.UI.csproj" -c Release -r win-x64 --self-contained -p:PublishReadyToRun=true -o $publishDir | Out-Null
+dotnet publish "$root/MyLocalBackup.UI/MyLocalBackup.UI.csproj" -c Release -r win-x64 --self-contained -p:UseSharedCompilation=false -o $publishDir
 if ($LASTEXITCODE -ne 0) { throw "Publish failed" }
 
 # Verify publish output contains expected files
@@ -121,7 +121,11 @@ Set-Content $packageWxs -Value $pkgContent -Encoding UTF8
 Write-Host "  Package.wxs Feature block updated with $($localeGroupIds.Count) locale refs" -ForegroundColor Gray
 
 Push-Location $msiDir
-wix build Package.wxs Files.wxs -d "Version=$Version" -ext WixToolset.UI.wixext -o MyLocalBackupSetup.msi
+$uiExtDll = Join-Path $env:USERPROFILE ".wix\extensions\WixToolset.UI.wixext\5.0.2\wixext5\WixToolset.UI.wixext.dll"
+if (-not (Test-Path $uiExtDll)) {
+    throw "WiX UI extension not found. Install it with: wix extension add -g WixToolset.UI.wixext/5.0.2"
+}
+wix build Package.wxs Files.wxs -d "Version=$Version" -ext $uiExtDll -o MyLocalBackupSetup.msi
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw "MSI build failed" }
 Pop-Location
 

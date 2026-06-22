@@ -9,8 +9,8 @@ https://github.com/user-attachments/assets/7ac7e0a2-d48d-4335-8729-e0dc80d09bc0
 <hr>
 
 <p>
-  <strong>Free versioned local backups for Windows. Space-efficient snapshots with one-click restore.</strong><br>
-  <em>NTFS hard-link deduplication keeps backup history compact. Built for local drives, removable drives, and everyday Windows workstations.</em>
+  <strong>Open-source versioned local backups for Windows. Space-efficient snapshots with one-click restore.</strong><br>
+  <em>MIT-licensed source code with NTFS hard-link deduplication to keep backup history compact.</em>
 </p>
 
 <p>
@@ -94,8 +94,8 @@ PackagePortable.ps1       Portable ZIP packaging script
 
 ## License
 
-Freeware — see [About dialog](MyLocalBackup.UI/MainWindow.xaml) in the app or the license text below.
+MyLocalBackup is open source under the [MIT License](LICENSE).
 
-Copyright (c) 2026 George Karagioules. All rights reserved. This software is provided free of charge for personal and commercial use. You may NOT modify, reverse-engineer, redistribute, or sell this software or any portion of it without prior written permission from the author. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+You may use, copy, modify, merge, publish, distribute, sublicense, and sell copies of the software, provided the MIT copyright and permission notice are included in copies or substantial portions of the software.
 
-For licensing inquiries (modification, redistribution, or resale rights), see the Contact section of https://github.com/gkaragioul.
+Third-party dependencies and build tools remain under their own licenses. In particular, WiX Toolset extensions are external build dependencies and are not vendored in this repository.

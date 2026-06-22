@@ -22,6 +22,7 @@ publish/
 
 # OS generated files
 .DS_Store
+._*
 Thumbs.db
 
 # MyLocalBackup Local Data (Avoid pushing user config/db)
@@ -38,6 +39,7 @@ metadata.db
 # Build artifacts and installer
 *.key
 *.msi
+.wix/
 # Ignore build-generated XML (NuGet props, targets, etc.) but not source XML
 **/[Bb]in/**/*.xml
 **/[Oo]bj/**/*.xml
