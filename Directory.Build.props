@@ -10,6 +10,15 @@
     <PathMap>$(MSBuildThisFileDirectory)=/src/</PathMap>
   </PropertyGroup>
 
+  <!-- Shared language and analyzer settings for all projects. -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+  </PropertyGroup>
+
   <!-- CI-style source path mapping needs git metadata (SourceRoot); skip it for
        builds from a source archive without a .git folder. -->
   <PropertyGroup Condition="Exists('$(MSBuildThisFileDirectory).git')">
