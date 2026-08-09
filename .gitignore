@@ -57,3 +57,6 @@ Staging/MyLocalBackup_Setup/*
 test.bat
 build_log.txt
 *_Website_Features.md
+
+# Local isolated development worktrees
+.worktrees/
