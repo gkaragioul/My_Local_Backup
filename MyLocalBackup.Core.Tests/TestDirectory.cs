@@ -23,6 +23,11 @@ public sealed class TestDirectory : IDisposable
     {
         if (Directory.Exists(Path))
         {
+            foreach (var file in Directory.EnumerateFiles(Path, "*", SearchOption.AllDirectories))
+            {
+                File.SetAttributes(file, FileAttributes.Normal);
+            }
+
             Directory.Delete(Path, recursive: true);
         }
     }
