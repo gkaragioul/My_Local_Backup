@@ -1,0 +1,18 @@
+<Project>
+  <!--
+    Reproducible, path-independent builds for every project in this repository.
+    Compiled binaries must not embed the builder's local folders (for example
+    C:\Users\<name>\...), so the checkout folder is mapped to a fixed prefix in
+    PDB paths and compiler-generated file paths.
+  -->
+  <PropertyGroup>
+    <Deterministic>true</Deterministic>
+    <PathMap>$(MSBuildThisFileDirectory)=/src/</PathMap>
+  </PropertyGroup>
+
+  <!-- CI-style source path mapping needs git metadata (SourceRoot); skip it for
+       builds from a source archive without a .git folder. -->
+  <PropertyGroup Condition="Exists('$(MSBuildThisFileDirectory).git')">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+</Project>
