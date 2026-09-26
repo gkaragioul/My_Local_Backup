@@ -42,6 +42,7 @@ When creating a new release:
 
 Versions follow the `0.X.Y` pattern. Check the latest tag or `.csproj` for current version.
 
+- v0.9.17: Data-safety fixes. Deleting a snapshot never follows links (a snapshot kept Windows' "My Music"/"My Pictures" junctions as links, and finishing an interrupted delete could delete the files they point at). Resumed backups never overwrite a file shared (hard-linked) with older snapshots; copies go to a temp file and are renamed into place. Hard links are only made to real files inside a snapshot. A destination inside a source folder is refused. Added `tests/MyLocalBackup.SafetyTests`. README documents real behaviour (restore by copying, low-space cleanup, hard links, no VSS, no warranty).
 - v0.9.16: Convert project source and installer EULA to the MIT License; remove vendored WiX extension from source control.
 - v0.9.15: Remove assisted in-app updater; updates are manual through GitHub Releases.
 - v0.9.14: Test release for validating update discovery from v0.9.13.
@@ -60,12 +61,14 @@ Versions follow the `0.X.Y` pattern. Check the latest tag or `.csproj` for curre
 
 - Full release build: `powershell -ExecutionPolicy Bypass -File release-build.ps1 -Version X.Y.Z`
 - Dev build only: `dotnet build MyLocalBackup.UI/MyLocalBackup.UI.csproj`
+- Data-safety tests (run before every release; exit code 0 = pass): `dotnet run -c Release --project tests/MyLocalBackup.SafetyTests`
 
 ## Project Structure
 
 - `MyLocalBackup.Core/` - Backup engine, database, configuration, models
 - `MyLocalBackup.UI/` - WPF desktop application
 - `Staging/MyLocalBackup_Setup/` - WiX source files (`Package.wxs`, `Files.wxs`, `Bundle.wxs`)
+- `tests/MyLocalBackup.SafetyTests/` - Data-safety regression tests (console runner, sandboxed in %TEMP%)
 - `release-build.ps1` - Automated release build script
 
 ## Key Technical Notes
@@ -76,6 +79,7 @@ Versions follow the `0.X.Y` pattern. Check the latest tag or `.csproj` for curre
 - Installer: WiX v5 Burn bundle EXE wrapping MSI
 - Install scope: per-user to `%LOCALAPPDATA%\Programs\MyLocalBackup`, no admin/UAC required
 - Hard link deduplication for backup storage (NTFS only)
+- Snapshot safety rules (see `MyLocalBackup.Core/Storage/SafeFileSystem.cs`): never delete through a link (symlink, junction, mount point), and never write into an existing snapshot file in place (it may be hard-linked to older snapshots); copy to a temp file and rename over it instead.
 - Self-contained publish bundles the .NET runtime
 - Updates are manual: users download the latest installer from GitHub Releases and run it.
 
