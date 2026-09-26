@@ -23,4 +23,10 @@
     <Resource Include="Assets\logo.png" />
   </ItemGroup>
 
+  <!-- Ship the license and third-party notices next to the app (and so in the installer). -->
+  <ItemGroup>
+    <None Include="..\LICENSE" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

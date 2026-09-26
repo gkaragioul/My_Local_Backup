@@ -157,4 +157,4 @@ MyLocalBackup is open source under the [MIT License](LICENSE).
 
 You may use, copy, modify, merge, publish, distribute, sublicense, and sell copies of the software, provided the MIT copyright and permission notice are included in copies or substantial portions of the software.
 
-Third-party dependencies and build tools remain under their own licenses. In particular, WiX Toolset extensions are external build dependencies and are not vendored in this repository.
+Third-party dependencies and build tools remain under their own licenses. In particular, WiX Toolset extensions are external build dependencies and are not vendored in this repository. The third-party components shipped in the installers (the .NET runtime, Microsoft.Data.Sqlite, SQLitePCLRaw/SQLite, H.NotifyIcon and the WiX runtime) are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), which is installed next to the app.
