@@ -1,3 +1,5 @@
+using MyLocalBackup.Core.Storage;
+
 namespace MyLocalBackup.Core.Engine
 {
     public static class RestorationManager
@@ -25,7 +27,12 @@ namespace MyLocalBackup.Core.Engine
 
             Directory.CreateDirectory(targetDir);
 
-            File.Copy(snapshotFilePath, safeTargetPath, overwrite);
+            if (!overwrite && (File.Exists(safeTargetPath) || Directory.Exists(safeTargetPath)))
+                throw new IOException($"The file '{safeTargetPath}' already exists.");
+
+            // Replace, never write through: an existing file at the target may be a hard link
+            // (for example inside another snapshot), which must keep its own content.
+            SafeFileSystem.CopyFileReplacing(snapshotFilePath, safeTargetPath);
         }
 
         public static void RestoreFolder(string snapshotFolderPath, string targetFolderPath)
@@ -55,7 +62,7 @@ namespace MyLocalBackup.Core.Engine
                 var targetDir = Path.GetDirectoryName(targetFile);
                 if (targetDir != null) Directory.CreateDirectory(targetDir);
 
-                File.Copy(file, targetFile, true);
+                SafeFileSystem.CopyFileReplacing(file, targetFile);
             }
         }
 
@@ -79,8 +86,8 @@ namespace MyLocalBackup.Core.Engine
             catch
             {
                 // Clean up staging directory on failure to prevent temp space leaks
-                try { if (Directory.Exists(stagingRoot)) Directory.Delete(stagingRoot, true); }
-                catch (Exception cleanupEx) { Logger.Log($"Warning: Could not clean up staging directory: {cleanupEx.Message}"); }
+                var cleanup = SafeFileSystem.DeleteDirectoryTree(stagingRoot);
+                if (cleanup.Failures > 0) Logger.Log($"Warning: Could not clean up staging directory: {cleanup.FirstError}");
                 throw;
             }
 
@@ -96,8 +103,8 @@ namespace MyLocalBackup.Core.Engine
             }
             finally
             {
-                try { Directory.Delete(stagingPath, true); }
-                catch (Exception cleanupEx) { Logger.Log($"Warning: Could not clean up staging directory: {cleanupEx.Message}"); }
+                var cleanup = SafeFileSystem.DeleteDirectoryTree(stagingPath);
+                if (cleanup.Failures > 0) Logger.Log($"Warning: Could not clean up staging directory: {cleanup.FirstError}");
             }
         }
     }

@@ -1,5 +1,6 @@
 using MyLocalBackup.Core.Models;
 using MyLocalBackup.Core.Data;
+using MyLocalBackup.Core.Storage;
 
 namespace MyLocalBackup.Core.Engine
 {
@@ -185,7 +186,10 @@ namespace MyLocalBackup.Core.Engine
             {
                 if (Directory.Exists(snapshot.Path))
                 {
-                    ClearReadOnlyAndDelete(snapshot.Path);
+                    // Links inside the snapshot are removed as links; their targets are never touched.
+                    var result = SafeFileSystem.DeleteDirectoryTree(snapshot.Path);
+                    if (result.Failures > 0)
+                        Logger.Log($"Warning: {result.Failures} item(s) in snapshot {Path.GetFileName(snapshot.Path)} could not be removed. First error: {result.FirstError}");
                 }
 
                 // Only remove DB record after confirming filesystem is clean
@@ -228,27 +232,6 @@ namespace MyLocalBackup.Core.Engine
             {
                 Logger.Log($"Warning: Could not revert snapshot {snapshotId} status from Deleting: {revertEx.Message}");
                 return false;
-            }
-        }
-
-        private static void ClearReadOnlyAndDelete(string directoryPath)
-        {
-            try
-            {
-                Directory.Delete(directoryPath, true);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                // Retry after clearing readonly attributes
-                foreach (var file in Directory.EnumerateFiles(directoryPath, "*", SearchOption.AllDirectories))
-                {
-                    var attrs = File.GetAttributes(file);
-                    if (attrs.HasFlag(FileAttributes.ReadOnly))
-                    {
-                        File.SetAttributes(file, attrs & ~FileAttributes.ReadOnly);
-                    }
-                }
-                Directory.Delete(directoryPath, true);
             }
         }
 

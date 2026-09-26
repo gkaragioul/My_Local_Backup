@@ -35,6 +35,10 @@ namespace MyLocalBackup.Core.Engine
         // Resume support: tracks DB-relative paths already present in a resumed snapshot
         private HashSet<string>? _resumedFilePaths;
 
+        // Folders inside earlier snapshots already checked to be real folders (not links), so hard
+        // links are only ever made to files that really live inside a snapshot.
+        private readonly ConcurrentDictionary<string, bool> _realSnapshotDirs = new(StringComparer.OrdinalIgnoreCase);
+
         // Progress tracking - file-count based for accurate progress
         private long _totalFileCount;
         private long _processedFileCount;
@@ -101,6 +105,8 @@ namespace MyLocalBackup.Core.Engine
 
         /// <summary>
         /// Copies a file with progress updates for large files. Supports cancellation and handles locked files.
+        /// <paramref name="targetPath"/> must be a fresh temporary file (see ProcessFile): writing into an
+        /// existing snapshot file would write through its hard links into older snapshots.
         /// </summary>
         private void CopyFileWithProgress(string sourcePath, string targetPath, long fileSize,
             Action<double, string>? onProgress, string fileName)
@@ -463,8 +469,11 @@ namespace MyLocalBackup.Core.Engine
         /// If snapshots are missing (drive was formatted), removes stale records from central DB.
         /// </summary>
         /// <summary>
-        /// Recursively deletes a directory in the background, respecting cancellation.
+        /// Deletes a snapshot folder in the background, respecting cancellation.
         /// Logs progress but does not block the caller.
+        /// Links inside the snapshot (symbolic links, junctions) are removed as links only:
+        /// the folders they point at, which can be the user's real Music or Pictures folder,
+        /// are never entered.
         /// </summary>
         private static void DeleteDirectoryInBackground(string path, string displayName, CancellationToken ct)
         {
@@ -472,33 +481,27 @@ namespace MyLocalBackup.Core.Engine
             {
                 try
                 {
-                    long deleted = 0;
-                    var lastLog = DateTime.MinValue;
-
-                    foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+                    var lastLog = DateTime.Now;
+                    var result = SafeFileSystem.DeleteDirectoryTree(path, ct, deleted =>
                     {
-                        if (ct.IsCancellationRequested)
-                        {
-                            Logger.Log($"Background cleanup of '{displayName}' paused by cancellation at {deleted:N0} files. Will resume next run.");
-                            return;
-                        }
-
-                        try { File.Delete(file); }
-                        catch { /* skip locked files */ }
-                        deleted++;
-
                         if ((DateTime.Now - lastLog).TotalSeconds > 30)
                         {
                             Logger.Log($"Background cleanup '{displayName}': {deleted:N0} files deleted...");
                             lastLog = DateTime.Now;
                         }
+                    });
+
+                    if (result.Cancelled)
+                    {
+                        Logger.Log($"Background cleanup of '{displayName}' paused by cancellation at {result.FilesDeleted:N0} files. Will resume next run.");
+                        return;
                     }
 
-                    // Remove the now-empty directory tree
-                    try { Directory.Delete(path, true); }
-                    catch { /* will be retried next run */ }
+                    if (result.Failures > 0)
+                        Logger.Log($"Background cleanup of '{displayName}': {result.Failures} item(s) could not be removed (will retry next run). First error: {result.FirstError}");
 
-                    Logger.Log($"Background cleanup of '{displayName}' complete: {deleted:N0} files deleted.");
+                    Logger.Log($"Background cleanup of '{displayName}' complete: {result.FilesDeleted:N0} files deleted" +
+                               (result.LinksRemoved > 0 ? $", {result.LinksRemoved:N0} link(s) removed without touching their targets." : "."));
                 }
                 catch (Exception ex)
                 {
@@ -652,8 +655,23 @@ namespace MyLocalBackup.Core.Engine
 
                 try
                 {
-                    foreach (var file in Directory.EnumerateFiles(targetSourceRoot, "*", SearchOption.AllDirectories))
+                    // Do not follow links left in the snapshot: only files that really live inside it count.
+                    var options = new EnumerationOptions
                     {
+                        RecurseSubdirectories = true,
+                        AttributesToSkip = FileAttributes.ReparsePoint,
+                        IgnoreInaccessible = false
+                    };
+
+                    foreach (var file in Directory.EnumerateFiles(targetSourceRoot, "*", options))
+                    {
+                        // Leftover temporary copy from the interrupted run: it is ours and incomplete.
+                        if (SafeFileSystem.IsTempFileName(Path.GetFileName(file)))
+                        {
+                            SafeFileSystem.TryDeleteTempFile(file);
+                            continue;
+                        }
+
                         // Build the DB-relative path: sourceFolderName\relative\path
                         var relativeToSnapshot = Path.GetRelativePath(snapshotPath, file);
                         _resumedFilePaths.Add(relativeToSnapshot);
@@ -837,6 +855,10 @@ namespace MyLocalBackup.Core.Engine
                 {
                     try
                     {
+                        // Resuming: replace whatever the interrupted run left there (entry only, never its data)
+                        if (_resumedFilePaths != null)
+                            SafeFileSystem.RemoveEntryIfPresent(targetFilePath);
+
                         File.CreateSymbolicLink(targetFilePath, linkTarget);
                         var symlinkEntry = new FileEntry
                         {
@@ -903,13 +925,22 @@ namespace MyLocalBackup.Core.Engine
                 }
             }
 
+            // Resuming and the interrupted run left an older version here. That entry is usually a
+            // hard link shared with earlier snapshots, so it must be removed (the entry only), never
+            // overwritten: overwriting it would silently replace the file in every earlier snapshot.
+            if (_resumedFilePaths != null)
+            {
+                try { SafeFileSystem.RemoveEntryIfPresent(targetFilePath); }
+                catch (Exception ex) { Logger.Log($"Warning: Could not remove stale entry {targetFilePath} before re-copying: {ex.Message}"); }
+            }
+
             bool linked = false;
 
             // Priority 1: Check same path in latest snapshot
             if (prevRp != null)
             {
                 var prevSnapshotFilePath = Path.Combine(prevRp.Path, dbRelativePath);
-                if (File.Exists(prevSnapshotFilePath))
+                if (File.Exists(prevSnapshotFilePath) && IsRealFileInsideSnapshot(prevRp.Path, prevSnapshotFilePath))
                 {
                     var prevInfo = new FileInfo(prevSnapshotFilePath);
                     if (fileInfo.Length == prevInfo.Length && fileInfo.LastWriteTimeUtc == prevInfo.LastWriteTimeUtc)
@@ -937,7 +968,7 @@ namespace MyLocalBackup.Core.Engine
                         var matchPhysicalPath = Path.Combine(matchRp.Path, match.Value.relativePath);
                         try
                         {
-                            if (File.Exists(matchPhysicalPath))
+                            if (File.Exists(matchPhysicalPath) && IsRealFileInsideSnapshot(matchRp.Path, matchPhysicalPath))
                                 linked = HardLinkManager.Create(targetFilePath, matchPhysicalPath);
                         }
                         catch (Exception hlEx)
@@ -949,29 +980,36 @@ namespace MyLocalBackup.Core.Engine
                 }
             }
 
-            // Priority 3: Copy (with progress for large files and Read-Share fallback)
+            // Priority 3: Copy (with progress for large files and Read-Share fallback).
+            // The copy goes to a temporary file in the same folder and is then renamed into place.
+            // If something already exists at the target (for example a hard link shared with older
+            // snapshots), the rename replaces only that entry; the older snapshots keep their data.
+            // A failed or interrupted copy never leaves a partial file under the real name.
             if (!linked)
             {
+                var tempPath = SafeFileSystem.NewTempPathBeside(targetFilePath);
                 try
                 {
-                    CopyFileWithProgress(sourceFilePath, targetFilePath, fileInfo.Length, onProgress, fileName);
+                    CopyFileWithProgress(sourceFilePath, tempPath, fileInfo.Length, onProgress, fileName);
+
+                    // Set timestamps separately - failure here shouldn't count as a copy error
+                    try
+                    {
+                        File.SetLastWriteTimeUtc(tempPath, fileInfo.LastWriteTimeUtc);
+                        File.SetCreationTimeUtc(tempPath, fileInfo.CreationTimeUtc);
+                    }
+                    catch (Exception tsEx)
+                    {
+                        Logger.Log($"Warning: Could not set timestamps on {fileName}: {tsEx}");
+                    }
+
+                    SafeFileSystem.ReplaceWithTempFile(tempPath, targetFilePath);
                 }
                 catch
                 {
-                    // Clean up partial/truncated file to prevent dedup index poisoning
-                    try { if (File.Exists(targetFilePath)) File.Delete(targetFilePath); }
-                    catch (Exception cleanupEx) { Logger.Log($"Warning: Could not clean up partial file {targetFilePath}: {cleanupEx.Message}"); }
+                    // Clean up the partial temporary copy to prevent dedup index poisoning
+                    SafeFileSystem.TryDeleteTempFile(tempPath);
                     throw;
-                }
-                // Set timestamps separately - failure here shouldn't count as a copy error
-                try
-                {
-                    File.SetLastWriteTimeUtc(targetFilePath, fileInfo.LastWriteTimeUtc);
-                    File.SetCreationTimeUtc(targetFilePath, fileInfo.CreationTimeUtc);
-                }
-                catch (Exception tsEx)
-                {
-                    Logger.Log($"Warning: Could not set timestamps on {fileName}: {tsEx}");
                 }
             }
 
@@ -1012,7 +1050,9 @@ namespace MyLocalBackup.Core.Engine
 
             try
             {
-                Directory.CreateDirectory(stagingTargetDir);
+                // A resumed snapshot can hold a folder link here (left by the interrupted run).
+                // Replace it with a real folder so nothing is written into the folder it points at.
+                SafeFileSystem.EnsureRealDirectory(stagingTargetDir);
             }
             catch (IOException ex) when (IsDiskFull(ex))
             {
@@ -1117,6 +1157,10 @@ namespace MyLocalBackup.Core.Engine
                     {
                         try
                         {
+                            // Resuming: replace a link the interrupted run left there (the link only)
+                            if (_resumedFilePaths != null)
+                                SafeFileSystem.RemoveEntryIfPresent(targetSubDir);
+
                             // Preserve directory symlink
                             Directory.CreateSymbolicLink(targetSubDir, linkTarget);
                             continue;
@@ -1142,6 +1186,58 @@ namespace MyLocalBackup.Core.Engine
                 }
 
                 ProcessDirectory(centralConn, sourceRootName, sourceRoot, subDir, targetSubDir, prevRp, rpIdCentral, onProgress);
+            }
+        }
+
+        /// <summary>
+        /// True when <paramref name="filePath"/> is a real file that lives inside the snapshot folder
+        /// <paramref name="snapshotRoot"/>, reached without passing through any link. An older snapshot
+        /// can contain a folder link (kept from a linked source folder); a path through it points at
+        /// live user data, and a hard link to that would tie the new snapshot to the user's own file.
+        /// Folder results are cached for the whole job, so the cost is one check per folder.
+        /// </summary>
+        private bool IsRealFileInsideSnapshot(string snapshotRoot, string filePath)
+        {
+            try
+            {
+                var file = new FileInfo(filePath);
+                if (!file.Exists || SafeFileSystem.IsReparsePoint(file)) return false;
+
+                var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(snapshotRoot));
+                var dir = Path.GetDirectoryName(Path.GetFullPath(filePath));
+
+                // Collect the folders between the file and the snapshot root that are not checked yet
+                var pending = new List<string>();
+                while (dir != null && !string.Equals(dir, root, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!dir.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                        return false; // not inside the snapshot at all
+
+                    if (_realSnapshotDirs.TryGetValue(dir, out bool known))
+                    {
+                        if (!known) return false;
+                        break; // this folder and everything above it are known to be real folders
+                    }
+
+                    pending.Add(dir);
+                    dir = Path.GetDirectoryName(dir);
+                }
+                if (dir == null) return false;
+
+                // Check from the top down so a link higher up marks everything below it as unsafe
+                bool safe = true;
+                for (int i = pending.Count - 1; i >= 0; i--)
+                {
+                    if (safe && SafeFileSystem.IsLink(new DirectoryInfo(pending[i])))
+                        safe = false;
+                    _realSnapshotDirs[pending[i]] = safe;
+                }
+                return safe;
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Warning: Could not verify hard-link source {filePath}; copying instead: {ex.Message}");
+                return false;
             }
         }
 
