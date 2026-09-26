@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Data-safety regression tests for the backup engine.
+    Plain console runner with no test framework packages; Program.cs shows how to run it.
+    Exit code 0 means all tests passed. Everything happens inside a throwaway folder under
+    %TEMP%; the real app data in %LOCALAPPDATA%\MyLocalBackup is never touched.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\MyLocalBackup.Core\MyLocalBackup.Core.csproj" />
+  </ItemGroup>
+
+</Project>
