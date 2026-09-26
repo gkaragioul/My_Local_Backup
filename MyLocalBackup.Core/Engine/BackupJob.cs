@@ -215,6 +215,11 @@ namespace MyLocalBackup.Core.Engine
         {
             _cancellationToken = cancellationToken;
 
+            // Never back up into a source folder (or back up the snapshot folder itself)
+            var overlapError = BackupPathRules.GetOverlapError(_config.SourceFolders, _destinationRoot);
+            if (overlapError != null)
+                throw new InvalidOperationException(overlapError);
+
             // Build combined exclusion set once for this job
             if (_config.ExcludedFolderNames.Count > 0)
             {
@@ -228,7 +233,7 @@ namespace MyLocalBackup.Core.Engine
                 _allExclusions = SystemExclusions;
             }
 
-            var snapshotsPath = Path.Combine(_destinationRoot, "Backup Snapshots");
+            var snapshotsPath = BackupPathRules.GetSnapshotsRoot(_destinationRoot);
 
             onProgress?.Invoke(0, "Preparing environment...");
             _cancellationToken.ThrowIfCancellationRequested();

@@ -444,6 +444,17 @@ namespace MyLocalBackup.UI.Views
             {
                 if (!_configManager.Config.SourceFolders.Any(f => string.Equals(f, dialog.SelectedPath, StringComparison.OrdinalIgnoreCase)))
                 {
+                    // Refuse a source that contains the backup destination (or sits inside the snapshot folder)
+                    var destination = _configManager.Config.Destination;
+                    var overlapError = destination == null ? null
+                        : BackupPathRules.GetOverlapError(new[] { dialog.SelectedPath }, destination.RootPath);
+                    if (overlapError != null)
+                    {
+                        System.Windows.MessageBox.Show(overlapError, "Choose a different folder",
+                            System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                        return;
+                    }
+
                     // Warn if user selected a root drive (e.g. H:\)
                     if (Path.GetPathRoot(dialog.SelectedPath)?.TrimEnd('\\').Equals(dialog.SelectedPath.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase) == true)
                     {
@@ -487,6 +498,16 @@ namespace MyLocalBackup.UI.Views
             if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             {
                 var path = dialog.SelectedPath;
+
+                // Refuse a destination inside a source folder: backups would copy themselves over and over
+                var overlapError = BackupPathRules.GetOverlapError(_configManager.Config.SourceFolders, path);
+                if (overlapError != null)
+                {
+                    System.Windows.MessageBox.Show(overlapError, "Choose a different destination",
+                        System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                    return;
+                }
+
                 string name;
                 try
                 {

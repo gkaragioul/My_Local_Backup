@@ -335,6 +335,16 @@ namespace MyLocalBackup.Core.Engine
                     return;
                 }
 
+                // Refuse a destination inside a source folder (or a source inside the snapshot folder)
+                var overlapError = BackupPathRules.GetOverlapError(_config.SourceFolders, _config.Destination.RootPath);
+                if (overlapError != null)
+                {
+                    lastError = overlapError;
+                    Logger.Log($"Backup not started: {overlapError.Replace("\n\n", " ")}");
+                    allSuccess = false;
+                    return;
+                }
+
                 if (token.IsCancellationRequested)
                 {
                     allSuccess = false;
