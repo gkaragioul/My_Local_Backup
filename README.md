@@ -28,6 +28,12 @@ https://github.com/user-attachments/assets/7ac7e0a2-d48d-4335-8729-e0dc80d09bc0
 
 </div>
 
+<p align="center">
+  <a href="https://buymeacoffee.com/gkaragioul"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me a Coffee"></a><br>
+  <sub>Free to download and use. Tips are voluntary and don't buy support or a warranty.</sub>
+</p>
+
+
 > [!CAUTION]
 > **MyLocalBackup is a free personal project. It can lose, overwrite or delete data, including files outside the backup.**
 >
