@@ -60,3 +60,6 @@ build_log.txt
 
 # Local isolated development worktrees
 .worktrees/
+
+# Local Claude Code settings (per machine, never commit)
+.claude/settings.local.json
