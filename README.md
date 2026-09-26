@@ -14,6 +14,7 @@ https://github.com/user-attachments/assets/7ac7e0a2-d48d-4335-8729-e0dc80d09bc0
 </p>
 
 <p>
+  <a href="#read-this-first">Read this first</a> &bull;
   <a href="https://github.com/gkaragioul/My_Local_Backup/releases/latest">Download</a> &bull;
   <a href="#features">Features</a> &bull;
   <a href="#restoring-files">Restoring files</a> &bull;
@@ -26,6 +27,18 @@ https://github.com/user-attachments/assets/7ac7e0a2-d48d-4335-8729-e0dc80d09bc0
 <hr>
 
 </div>
+
+> [!CAUTION]
+> **MyLocalBackup is a free personal project. It can lose, overwrite or delete data, including files outside the backup.**
+>
+> - It is provided "as is" under the [MIT License](LICENSE), without warranty of any kind. You alone are responsible for how you use it and for any loss that results. See [DISCLAIMER.md](DISCLAIMER.md).
+> - **Versions 0.7.5 to 0.9.16 have known bugs that can delete or overwrite real files.** See [Known data-loss bugs in older versions](#known-data-loss-bugs-in-older-versions). Don't use them.
+> - Never rely on MyLocalBackup as your only backup. Keep a second, independent copy of anything you can't afford to lose, and check regularly that you can open files from your snapshots.
+> - There is no support and no promise of fixes. See [SUPPORT.md](SUPPORT.md).
+
+## Read this first
+
+MyLocalBackup writes to your backup drive and **deletes old snapshots automatically**, both on a schedule and when the drive runs low on space. Its snapshots share files through NTFS hard links, which makes mistakes inside a snapshot folder spread to other snapshots. It has not been independently tested or audited. A bug, a wrong setting or a failing disk can mean that the backup you need isn't there. Use it at your own risk, and read [Good to know](#good-to-know) before relying on it.
 
 ## Features
 
@@ -80,9 +93,20 @@ Please read this before relying on MyLocalBackup.
 - **Keep the backup somewhere else.** Pick a destination outside your source folders, ideally on a separate drive. A backup on the same disk as the originals won't help if that disk fails.
 - **Check the log now and then.** If a source folder is missing (for example on an unplugged drive) or a folder can't be read, it's skipped with a note in the activity log, and the backup still shows as completed.
 
-## No warranty
+## Known data-loss bugs in older versions
 
-MyLocalBackup is provided **as is, without warranty of any kind**, under the [MIT License](LICENSE). It's a free tool, not a guarantee. Keep a second backup of anything you can't afford to lose (another drive, or an off-site or cloud copy), and every so often check that you can actually open files from a snapshot.
+Both are fixed in 0.9.17.
+
+- **Deleting a snapshot could delete real files outside the backup (v0.7.5 to v0.9.16).** Windows puts folder links such as `My Music` and `My Pictures` inside Documents, and the app saved them into snapshots as links (with Developer Mode on, or when run as administrator). If a snapshot delete was cut short (app closed, PC shut down) and finished later, it followed those links and deleted the files in the real folders they point to.
+- **Resuming an interrupted backup could overwrite older versions (v0.8.5 to v0.9.16).** When a file changed before a backup resumed, the new version was written through the hard link that the file shared with older snapshots, so those snapshots silently got the new version too.
+
+If you used an affected version: update, and check that the folders your Documents links point to (Music, Pictures, Videos) still hold your files.
+
+## No warranty, your responsibility
+
+MyLocalBackup is provided **as is, without warranty of any kind**, under the [MIT License](LICENSE). In no event are the authors liable for any claim, damages or other liability, including loss of data. It's a free tool, not a guarantee.
+
+By installing or using it you accept that you use it entirely at your own risk and that you alone are responsible for choosing the right source and destination folders, for keeping a second backup of anything you can't afford to lose (another drive, or an off-site or cloud copy), and for checking every so often that you can actually open files from a snapshot. The full terms are in [DISCLAIMER.md](DISCLAIMER.md).
 
 ## Tech Stack
 
