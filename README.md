@@ -132,6 +132,16 @@ Data-safety tests (they work in a throwaway folder under `%TEMP%` and never touc
 dotnet run -c Release --project tests/MyLocalBackup.SafetyTests
 ```
 
+Unit tests for the next-generation storage engine (work in progress, see below; also sandboxed under `%TEMP%`):
+
+```
+dotnet test MyLocalBackup.Core.Tests
+```
+
+### Work in progress: v1 storage engine
+
+`MyLocalBackup.Core/Storage/` also contains the first pieces of a planned 1.0 storage engine: a store that keeps each file's content once under its SHA-256 hash and checks it before accepting it, a per-snapshot SQLite manifest, and a repository manager that only publishes a snapshot after its manifest verifies. The app does **not** use this code yet, so it changes nothing about how backups work today. The design and plan are in `docs/superpowers/`.
+
 ## Release Build (EXE Installer)
 
 ```
@@ -145,7 +155,9 @@ The script handles: publish, regenerate Files.wxs, MSI build, Burn bundle EXE bu
 ```
 MyLocalBackup.Core/       Backup engine, database, configuration, models
 MyLocalBackup.UI/         WPF desktop application
+MyLocalBackup.Core.Tests/ Unit tests for the v1 storage engine (work in progress)
 tests/                    Data-safety regression tests
+docs/superpowers/         Design and implementation plan for the v1 storage engine
 Staging/                  WiX MSI + Burn bundle EXE packaging
 release-build.ps1         Automated release build script
 PackagePortable.ps1       Portable ZIP packaging script

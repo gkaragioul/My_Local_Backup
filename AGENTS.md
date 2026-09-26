@@ -62,6 +62,7 @@ Versions follow the `0.X.Y` pattern. Check the latest tag or `.csproj` for curre
 - Full release build: `powershell -ExecutionPolicy Bypass -File release-build.ps1 -Version X.Y.Z`
 - Dev build only: `dotnet build MyLocalBackup.UI/MyLocalBackup.UI.csproj`
 - Data-safety tests (run before every release; exit code 0 = pass): `dotnet run -c Release --project tests/MyLocalBackup.SafetyTests`
+- v1 storage engine unit tests (work in progress, not used by the app yet): `dotnet test MyLocalBackup.Core.Tests`
 
 ## Project Structure
 
@@ -69,6 +70,7 @@ Versions follow the `0.X.Y` pattern. Check the latest tag or `.csproj` for curre
 - `MyLocalBackup.UI/` - WPF desktop application
 - `Staging/MyLocalBackup_Setup/` - WiX source files (`Package.wxs`, `Files.wxs`, `Bundle.wxs`)
 - `tests/MyLocalBackup.SafetyTests/` - Data-safety regression tests (console runner, sandboxed in %TEMP%)
+- `MyLocalBackup.Core.Tests/` - xUnit tests for the v1 storage engine; design and plan in `docs/superpowers/`
 - `release-build.ps1` - Automated release build script
 
 ## Key Technical Notes
